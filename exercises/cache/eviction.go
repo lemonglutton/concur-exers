@@ -5,7 +5,7 @@ import (
 )
 
 type evictionAlgo interface {
-	evict(c Cacher) []string
+	evict(c *InMemoryCache)
 }
 
 type fifo struct{}
