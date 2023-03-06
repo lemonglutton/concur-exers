@@ -2,94 +2,110 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
+	"sync"
 	"time"
 )
 
-type example struct {
-	data      interface{}
-	timestamp int64
-}
-
-// m := NewInMemoryCache(&fifo{}, 10, nil)
-
-// cars := []Car{
-// 	Car{vinNumber: "1"},
-// 	Car{vinNumber: "2"},
-// 	Car{vinNumber: "3"},
-// 	Car{vinNumber: "4"},
-// 	Car{vinNumber: "5"},
-// 	Car{vinNumber: "6"},
-// 	Car{vinNumber: "7"},
-// 	Car{vinNumber: "8"},
-// 	Car{vinNumber: "9"},
-// 	Car{vinNumber: "10"},
-// 	Car{vinNumber: "11"},
-// 	Car{vinNumber: "12"}}
-
-// for _, val := range cars {
-// 	go func () {
-
-// 		m.Update(val)
-
-// 	}
-// }
-
-// You can edit this code!
-// Click here and start typing.
-
 func main() {
 
-	var or func(channels ...<-chan interface{}) <-chan interface{}
-	or = func(channels ...<-chan interface{}) <-chan interface{} {
-		switch len(channels) {
-		case 0:
-			return nil
-		case 1:
-			return channels[0]
-		}
+	Reading()
+}
 
-		orDone := make(chan interface{})
-		go func() {
-			defer close(orDone)
+func Reading() {
+	m := NewInMemoryCache(&fifo{}, 3,
+		[]Entity{
+			Car{vinNumber: "1", model: "Mondeo"},
+			Car{vinNumber: "2", model: "Citroen"},
+			// Car{vinNumber: "3", model: "Audi"},
+			// Car{vinNumber: "4", model: "Jaguar"},
+		})
 
-			switch len(channels) {
-			case 2:
-				select {
-				case <-channels[0]:
-				case <-channels[1]:
-				}
+	cars := []Entity{
+		Car{vinNumber: "5", model: "Ferrari"},
+		Car{vinNumber: "6", model: "Porshe"},
+		Car{vinNumber: "7", model: "Nissan"}}
 
-			default:
-				select {
-				case <-channels[0]:
-				case <-channels[1]:
-				case <-channels[2]:
-				case <-or(append(channels[3:], orDone)...):
+	wait := sync.WaitGroup{}
+	ready := sync.WaitGroup{}
+	mu := sync.Mutex{}
 
-				}
+	wait.Add(2 * len(cars))
+	ready.Add(len(cars))
+
+	var res []Entity
+	for _, car := range cars {
+		time.Sleep(1 * time.Second)
+		go func(e Entity) {
+			defer ready.Done()
+			defer wait.Done()
+
+			err := m.Update(e)
+			if err != nil {
+				fmt.Println(err)
 			}
-		}()
-		return orDone
+		}(car)
+
+		go func(id string) {
+			ready.Wait()
+			time.Sleep(time.Duration(rand.Intn(5)+5) * time.Second)
+			defer wait.Done()
+
+			resp, err := m.Read(id)
+			if err != nil {
+				fmt.Println(err)
+			}
+
+			mu.Lock()
+			res = append(res, resp)
+			mu.Unlock()
+		}(car.Id())
+	}
+	wait.Wait()
+	m.Print()
+
+	fmt.Println("Finish, results:", res)
+}
+
+func ConcurrentlyAdding() {
+	m := NewInMemoryCache(&fifo{}, 3, nil)
+
+	cars := []Car{
+		{vinNumber: "1", model: "Mondeo"},
+		{vinNumber: "2", model: "Citroen"},
+		{vinNumber: "3", model: "Audi"},
+		// {vinNumber: "4", model: "Jaguar"},
+		// {vinNumber: "5", model: "Porshe"},
+		// {vinNumber: "6", model: "Ferrari"},
+		// {vinNumber: "7", model: "Nissan"},
+		// {vinNumber: "8", model: "Alfa Romeo"},
+		// {vinNumber: "9", model: "Volvo"},
+		// {vinNumber: "10", model: "Volkswagen"},
+		// {vinNumber: "11", model: "Lamborgini"},
+		// {vinNumber: "12", model: "BMW"},
+	}
+	rand.Seed(time.Now().UnixNano())
+
+	wait := sync.WaitGroup{}
+	ready := sync.WaitGroup{}
+	wait.Add(len(cars))
+	ready.Add(len(cars))
+
+	for _, car := range cars {
+		go func(c Car) {
+			defer wait.Done()
+			ready.Done()
+			ready.Wait()
+
+			time.Sleep(time.Duration(rand.Intn(15)) * time.Second)
+			m.Update(c)
+		}(car)
 	}
 
-	sig := func(after time.Duration) <-chan interface{} {
-		c := make(chan interface{})
-		go func() {
-			defer close(c)
-			time.Sleep(after)
-		}()
+	wait.Wait()
+	m.Print()
 
-		return c
-	}
-
-	start := time.Now()
-	<-or(
-		sig(5*time.Hour),
-		sig(5*time.Minute),
-		sig(1*time.Hour),
-		sig(1*time.Minute),
-	)
-
-	fmt.Printf("Done after %v", time.Since(start))
+	m.Update(Car{vinNumber: "11", model: "Lamborgini"})
+	m.Print()
 
 }
