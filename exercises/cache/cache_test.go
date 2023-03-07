@@ -8,23 +8,23 @@ import (
 )
 
 func TestCaching(t *testing.T) {
-	cars := []Entity{
-		Car{vinNumber: "1", model: "Mondeo"},
-		Car{vinNumber: "2", model: "Citroen"},
-		Car{vinNumber: "3", model: "Audi"},
-		Car{vinNumber: "4", model: "Jaguar"},
-		Car{vinNumber: "5", model: "Porshe"},
-		Car{vinNumber: "6", model: "Ferrari"},
-		Car{vinNumber: "7", model: "Nissan"},
-		Car{vinNumber: "8", model: "Alfa Romeo"},
-		Car{vinNumber: "9", model: "Volvo"},
-		Car{vinNumber: "10", model: "Volkswagen"},
+	cars := []Car{
+		{vinNumber: "1", model: "Mondeo"},
+		{vinNumber: "2", model: "Citroen"},
+		{vinNumber: "3", model: "Audi"},
+		{vinNumber: "4", model: "Jaguar"},
+		{vinNumber: "5", model: "Porshe"},
+		{vinNumber: "6", model: "Ferrari"},
+		{vinNumber: "7", model: "Nissan"},
+		{vinNumber: "8", model: "Alfa Romeo"},
+		{vinNumber: "9", model: "Volvo"},
+		{vinNumber: "10", model: "Volkswagen"},
 	}
 
 	t.Run("Add records to cache with warmup", func(t *testing.T) {
 		const maxCap = 10
 		m := NewInMemoryCache(&fifo{}, maxCap,
-			[]Entity{
+			[]Car{
 				Car{vinNumber: "11", model: "Lamborgini"},
 				Car{vinNumber: "12", model: "Tata"},
 				Car{vinNumber: "13", model: "BMW"}})
@@ -35,14 +35,14 @@ func TestCaching(t *testing.T) {
 		wait.Add(len(cars))
 		ready.Add(len(cars))
 		for _, entity := range cars {
-			go func(e Entity) {
+			go func(c Car) {
 				defer wait.Done()
 
 				ready.Done()
 				ready.Wait()
 
 				time.Sleep(time.Duration(rand.Intn(2)+1) * time.Second)
-				m.Update(e)
+				m.Update(c)
 			}(entity)
 		}
 
@@ -69,21 +69,21 @@ func TestCaching(t *testing.T) {
 		wait.Add(2 * len(cars))
 		ready.Add(len(cars))
 		for _, entity := range cars {
-			go func(e Entity) {
+			go func(c Car) {
 				defer wait.Done()
 
 				ready.Done()
 				ready.Wait()
 
 				time.Sleep(time.Duration(rand.Intn(2)+1) * time.Second)
-				m.Update(e)
+				m.Update(c)
 			}(entity)
 
-			go func(e Entity) {
+			go func(c Car) {
 				defer wait.Done()
 
 				ready.Wait()
-				m.Read(e.Id())
+				m.Read(c.Id())
 			}(entity)
 
 		}
@@ -95,9 +95,9 @@ func TestCaching(t *testing.T) {
 		}()
 		wait.Wait()
 
-		var arr []Entity
+		var arr []Car
 		for _, entity := range cars {
-			if car, _ := m.Read(entity.Id()); car != nil {
+			if car, err := m.Read(entity.Id()); err == nil {
 				arr = append(arr, car)
 			}
 		}
@@ -109,37 +109,53 @@ func TestCaching(t *testing.T) {
 
 	t.Run("Modify records if they are already in cache", func(t *testing.T) {
 		const maxCap = 13
-		warmupCars := []Entity{
-			Car{vinNumber: "1", model: "MondeoOrg"},
-			Car{vinNumber: "2", model: "CitroenOrg"},
-			Car{vinNumber: "3", model: "AudiOrg"}}
+		warmupCars := []Car{
+			{vinNumber: "1", model: "MondeoOrg"},
+			{vinNumber: "2", model: "CitroenOrg"},
+			{vinNumber: "3", model: "AudiOrg"}}
 
 		m := NewInMemoryCache(&fifo{}, maxCap, warmupCars)
 
-		var originals []Entity
+		originals := make(map[string]Car)
 		for _, car := range warmupCars {
-			entity, err := m.Read(car.Id())
+			carFromCache, err := m.Read(car.Id())
 			if err != nil {
 				t.Errorf("Failed to prepare data for test")
 			}
-			originals = append(originals, entity)
+			originals[carFromCache.Id()] = carFromCache
 		}
 
 		wait := sync.WaitGroup{}
 		ready := sync.WaitGroup{}
 		for _, entity := range cars {
-			go func(e Entity) {
+			go func(c Car) {
 				defer wait.Done()
 
 				ready.Done()
 				ready.Wait()
 
 				time.Sleep(time.Duration(rand.Intn(2)+1) * time.Second)
-				m.Update(e)
+				m.Update(c)
 			}(entity)
 		}
 		wait.Wait()
 
+		var counter int
+		for _, car := range cars {
+			cachedCar, err := m.Read(car.Id())
+
+			if err == nil {
+				counter++
+			}
+
+			if car, exists := originals[cachedCar.Id()]; exists && car.Model() == cachedCar.Model() {
+				t.Errorf("Expected: %v, actual: %v", originals[cachedCar.Id()].Model(), car.Model())
+			}
+		}
+
+		if counter != maxCap-3 {
+			t.Errorf("Expected: %v, actual: %v", maxCap-3, counter)
+		}
 	})
 
 	t.Run("Too high warump set", func(t *testing.T) {
@@ -148,10 +164,10 @@ func TestCaching(t *testing.T) {
 				t.Errorf("The code did not panic")
 			}
 		}()
-		NewInMemoryCache(&fifo{}, 2, []Entity{
-			Car{vinNumber: "11", model: "Lamborgini"},
-			Car{vinNumber: "12", model: "Tata"},
-			Car{vinNumber: "13", model: "BMW"}})
+		NewInMemoryCache(&fifo{}, 2, []Car{
+			{vinNumber: "11", model: "Lamborgini"},
+			{vinNumber: "12", model: "Tata"},
+			{vinNumber: "13", model: "BMW"}})
 	})
 
 }
