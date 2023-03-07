@@ -13,7 +13,7 @@ func main() {
 }
 
 func Reading() {
-	m := NewInMemoryCache(&fifo{}, 3,
+	m := NewInMemoryCache(&fifo{}, 10,
 		[]Entity{
 			Car{vinNumber: "1", model: "Mondeo"},
 			Car{vinNumber: "2", model: "Citroen"},

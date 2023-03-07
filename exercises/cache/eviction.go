@@ -22,9 +22,7 @@ func (f *fifo) evict(c *InMemoryCache) {
 	})
 
 	log.Printf("Removing: %v\n", c.data[keys[0]].Sprintf())
-
 	c.delete(keys[0])
-
 }
 
 type lru struct{}
