@@ -25,9 +25,9 @@ func TestCaching(t *testing.T) {
 		const maxCap = 10
 		m := NewInMemoryCache(&fifo{}, maxCap,
 			[]Car{
-				Car{vinNumber: "11", model: "Lamborgini"},
-				Car{vinNumber: "12", model: "Tata"},
-				Car{vinNumber: "13", model: "BMW"}})
+				{vinNumber: "11", model: "Lamborgini"},
+				{vinNumber: "12", model: "Tata"},
+				{vinNumber: "13", model: "BMW"}})
 
 		wait := sync.WaitGroup{}
 		ready := sync.WaitGroup{}
@@ -48,8 +48,8 @@ func TestCaching(t *testing.T) {
 
 		go func() {
 			ready.Wait()
-			<-time.After(time.Duration(40 * time.Second))
-			t.Errorf("Test has exceeded 40s, timeout")
+			<-time.After(time.Duration(10 * time.Second))
+			t.Errorf("Test has exceeded 10s, timeout")
 		}()
 		wait.Wait()
 
@@ -90,8 +90,8 @@ func TestCaching(t *testing.T) {
 
 		go func() {
 			ready.Wait()
-			<-time.After(time.Duration(45 * time.Second))
-			t.Errorf("Test has exceeded 45s, timeout")
+			<-time.After(time.Duration(10 * time.Second))
+			t.Errorf("Test has exceeded 10s, timeout")
 		}()
 		wait.Wait()
 
@@ -102,6 +102,7 @@ func TestCaching(t *testing.T) {
 			}
 		}
 
+		t.Logf("Records in cache after operation: %v", arr)
 		if len(arr) != maxCap {
 			t.Errorf("Expected: %d, actual: %d", maxCap, len(arr))
 		}
@@ -127,6 +128,8 @@ func TestCaching(t *testing.T) {
 
 		wait := sync.WaitGroup{}
 		ready := sync.WaitGroup{}
+		wait.Add(len(cars))
+		ready.Add(len(cars))
 		for _, entity := range cars {
 			go func(c Car) {
 				defer wait.Done()
@@ -140,12 +143,18 @@ func TestCaching(t *testing.T) {
 		}
 		wait.Wait()
 
-		var counter int
+		go func() {
+			ready.Wait()
+			<-time.After(time.Duration(10 * time.Second))
+			t.Errorf("Test has exceeded 10s, timeout")
+		}()
+
+		var arr []Car
 		for _, car := range cars {
 			cachedCar, err := m.Read(car.Id())
 
 			if err == nil {
-				counter++
+				arr = append(arr, cachedCar)
 			}
 
 			if car, exists := originals[cachedCar.Id()]; exists && car.Model() == cachedCar.Model() {
@@ -153,8 +162,9 @@ func TestCaching(t *testing.T) {
 			}
 		}
 
-		if counter != maxCap-3 {
-			t.Errorf("Expected: %v, actual: %v", maxCap-3, counter)
+		t.Logf("Records in cache before: %v, after operation: %v\n", originals, arr)
+		if len(arr) != maxCap-3 {
+			t.Errorf("Expected: %v, actual: %v", maxCap-3, len(arr))
 		}
 	})
 
@@ -169,12 +179,68 @@ func TestCaching(t *testing.T) {
 			{vinNumber: "12", model: "Tata"},
 			{vinNumber: "13", model: "BMW"}})
 	})
-
 }
 
-func TestPurge(t *testing.T) {}
+func TestPurge(t *testing.T) {
+	cars := []Car{
+		{vinNumber: "1", model: "Mondeo"},
+		{vinNumber: "2", model: "Citroen"},
+		{vinNumber: "3", model: "Audi"},
+		{vinNumber: "4", model: "Jaguar"},
+		{vinNumber: "5", model: "Porshe"},
+		{vinNumber: "6", model: "Ferrari"},
+		{vinNumber: "7", model: "Nissan"},
+		{vinNumber: "8", model: "Alfa Romeo"},
+		{vinNumber: "9", model: "Volvo"},
+		{vinNumber: "10", model: "Volkswagen"},
+	}
 
-func TestPrint(t *testing.T) {}
+	m := NewInMemoryCache(&fifo{}, 10, nil)
+
+	main := sync.WaitGroup{}
+	ready := sync.WaitGroup{}
+
+	main.Add(2*len(cars) + 1)
+	ready.Add(len(cars))
+	for _, car := range cars {
+		go func(c Car) {
+			defer main.Done()
+
+			ready.Done()
+			ready.Wait()
+			m.Update(c)
+		}(car)
+
+		go func(c Car) {
+			defer main.Done()
+
+			ready.Wait()
+			m.Read(c.Id())
+		}(car)
+
+	}
+
+	go func() {
+		defer main.Done()
+		ready.Wait()
+		m.Purge()
+	}()
+	main.Wait()
+
+	var carCol []Car
+	for _, car := range cars {
+		cachedCar, _ := m.Read(car.Id())
+
+		if cachedCar != (Car{}) {
+			carCol = append(carCol, cachedCar)
+		}
+	}
+
+	t.Logf("Records in cache after Purge: %v", carCol)
+	if len(carCol) == 10 {
+		t.Errorf("Expected: <10, actual: %d", len(carCol))
+	}
+}
 
 func BenchmarkFifo(b *testing.B) {}
 

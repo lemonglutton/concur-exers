@@ -57,11 +57,11 @@ func (c *InMemoryCache) Update(car Car) error {
 	now := time.Now().UTC()
 
 	if c == nil {
-		return errors.New("Entity is incomplete")
+		return errors.New("car entity is incomplete")
 	}
 
 	c.mu.Lock()
-	log.Printf("Adding/modifying with: %v\n", c)
+	log.Printf("Adding/modifying with: %v\n", car)
 	if _, exists := c.data[car.Id()]; c.maxCapacity <= len(c.data) && !exists {
 		log.Printf("Starting cleanup...")
 		c.evict()
@@ -109,9 +109,11 @@ func (c *InMemoryCache) warm(ents []Car) {
 }
 
 func (c *InMemoryCache) Print() {
+	c.mu.Lock()
 	for _, val := range c.data {
 		fmt.Printf("%v", val.Sprintf())
 	}
+	c.mu.Unlock()
 }
 
 func (c *InMemoryCache) delete(id string) {
