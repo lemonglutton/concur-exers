@@ -1,7 +1,6 @@
 package main
 
 import (
-	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -22,6 +21,8 @@ func TestCaching(t *testing.T) {
 	}
 
 	t.Run("Add records to cache with warmup", func(t *testing.T) {
+		t.Parallel()
+
 		const maxCap = 10
 		m := NewInMemoryCache(&fifo{}, maxCap,
 			[]Car{
@@ -41,7 +42,6 @@ func TestCaching(t *testing.T) {
 				ready.Done()
 				ready.Wait()
 
-				time.Sleep(time.Duration(rand.Intn(2)+1) * time.Second)
 				m.Update(c)
 			}(entity)
 		}
@@ -54,13 +54,17 @@ func TestCaching(t *testing.T) {
 		wait.Wait()
 
 		for _, entity := range cars {
-			if _, err := m.Read(entity.Id()); err != nil {
+			if val, err := m.Read(entity.Id()); err != nil {
 				t.Errorf("Expected : %v, actual: %v", entity.Id(), err.Error())
+			} else {
+				t.Logf("Car: %v", val)
 			}
 		}
 	})
 
 	t.Run("Add records to cache with small capacity and multiple concurrent readers", func(t *testing.T) {
+		t.Parallel()
+
 		const maxCap = 2
 		m := NewInMemoryCache(&fifo{}, maxCap, nil)
 
@@ -75,7 +79,6 @@ func TestCaching(t *testing.T) {
 				ready.Done()
 				ready.Wait()
 
-				time.Sleep(time.Duration(rand.Intn(2)+1) * time.Second)
 				m.Update(c)
 			}(entity)
 
@@ -109,6 +112,8 @@ func TestCaching(t *testing.T) {
 	})
 
 	t.Run("Modify records if they are already in cache", func(t *testing.T) {
+		t.Parallel()
+
 		const maxCap = 13
 		warmupCars := []Car{
 			{vinNumber: "1", model: "MondeoOrg"},
@@ -137,7 +142,6 @@ func TestCaching(t *testing.T) {
 				ready.Done()
 				ready.Wait()
 
-				time.Sleep(time.Duration(rand.Intn(2)+1) * time.Second)
 				m.Update(c)
 			}(entity)
 		}
@@ -169,6 +173,8 @@ func TestCaching(t *testing.T) {
 	})
 
 	t.Run("Too high warump set", func(t *testing.T) {
+		t.Parallel()
+
 		defer func() {
 			if r := recover(); r == nil {
 				t.Errorf("The code did not panic")
@@ -182,6 +188,8 @@ func TestCaching(t *testing.T) {
 }
 
 func TestPurge(t *testing.T) {
+	t.Parallel()
+
 	cars := []Car{
 		{vinNumber: "1", model: "Mondeo"},
 		{vinNumber: "2", model: "Citroen"},
@@ -242,10 +250,10 @@ func TestPurge(t *testing.T) {
 	}
 }
 
-func BenchmarkFifo(b *testing.B) {}
+func BenchmarkReads(b *testing.B) {
 
-func BenchmarkLru(b *testing.B) {}
+}
 
-func BenchmarkLfu(b *testing.B) {
+func BenchmarkWrites(b *testing.B) {
 
 }
