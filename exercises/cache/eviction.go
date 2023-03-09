@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"sort"
 )
 
@@ -12,7 +11,7 @@ type evictionAlgo interface {
 type fifo struct{}
 
 func (f *fifo) evict(c *InMemoryCache) {
-	keys := []string{}
+	keys := []int{}
 	for key, _ := range c.data {
 		keys = append(keys, key)
 	}
@@ -21,14 +20,14 @@ func (f *fifo) evict(c *InMemoryCache) {
 		return c.data[keys[i]].createdAt < c.data[keys[j]].createdAt
 	})
 
-	log.Printf("Removing: %v\n", c.data[keys[0]].Sprintf())
+	// log.Printf("Removing: %v\n", c.data[keys[0]].Sprintf())
 	c.delete(keys[0])
 }
 
 type lru struct{}
 
 func (l *lru) evict(c *InMemoryCache) {
-	keys := []string{}
+	keys := []int{}
 	for key, _ := range c.data {
 		keys = append(keys, key)
 	}
@@ -43,7 +42,7 @@ func (l *lru) evict(c *InMemoryCache) {
 type lfu struct{}
 
 func (l *lfu) evict(c *InMemoryCache) {
-	keys := []string{}
+	keys := []int{}
 	for key, _ := range c.data {
 		keys = append(keys, key)
 	}

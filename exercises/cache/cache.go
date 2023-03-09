@@ -3,14 +3,13 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 )
 
 type Cacher interface {
 	Update(car Car) error
-	Read(id string) (Car, error)
+	Read(id int) (Car, error)
 	Purge()
 	Print()
 }
@@ -28,18 +27,18 @@ func (ce CachedCar) Sprintf() string {
 
 // O(n)
 type InMemoryCache struct {
-	data         map[string]CachedCar
+	data         map[int]CachedCar
 	evictionAlgo evictionAlgo
 	maxCapacity  int
-	mu           sync.Mutex
+	mu           sync.RWMutex
 }
 
 func NewInMemoryCache(ev evictionAlgo, maxCap int, initVals []Car) Cacher {
 	cache := &InMemoryCache{
-		data:         make(map[string]CachedCar),
+		data:         make(map[int]CachedCar),
 		evictionAlgo: ev,
 		maxCapacity:  maxCap,
-		mu:           sync.Mutex{},
+		mu:           sync.RWMutex{},
 	}
 
 	if len(initVals) > cache.maxCapacity {
@@ -61,29 +60,29 @@ func (c *InMemoryCache) Update(car Car) error {
 	}
 
 	c.mu.Lock()
-	log.Printf("Adding/modifying with: %v\n", car)
+	// log.Printf("Adding/modifying with: %v\n", car)
 	if _, exists := c.data[car.Id()]; c.maxCapacity <= len(c.data) && !exists {
-		log.Printf("Starting cleanup...\n")
+		// log.Printf("Starting cleanup...\n")
 		c.evict()
 	}
 	c.data[car.Id()] = CachedCar{
 		data:      car,
-		createdAt: now.UnixMilli(),
-		lastUsed:  now.UnixMilli(),
+		createdAt: now.UnixMicro(),
+		lastUsed:  now.UnixMicro(),
 	}
 	c.mu.Unlock()
 
 	return nil
 }
 
-func (c *InMemoryCache) Read(id string) (Car, error) {
+func (c *InMemoryCache) Read(id int) (Car, error) {
 	c.mu.Lock()
 	e, exists := c.data[id]
 	if !exists {
 		c.mu.Unlock()
 		return Car{}, errors.New("object not in cache")
 	}
-	e.lastUsed = time.Now().UnixMilli()
+	e.lastUsed = time.Now().UnixMicro()
 	e.freq += 1
 	c.mu.Unlock()
 
@@ -92,7 +91,7 @@ func (c *InMemoryCache) Read(id string) (Car, error) {
 
 func (c *InMemoryCache) Purge() {
 	c.mu.Lock()
-	c.data = make(map[string]CachedCar)
+	c.data = make(map[int]CachedCar)
 	c.mu.Unlock()
 }
 
@@ -102,8 +101,8 @@ func (c *InMemoryCache) warm(ents []Car) {
 	for _, ent := range ents {
 		c.data[ent.Id()] = CachedCar{
 			data:      ent,
-			createdAt: now.UnixMilli(),
-			lastUsed:  now.UnixMilli(),
+			createdAt: now.UnixMicro(),
+			lastUsed:  now.UnixMicro(),
 		}
 	}
 }
@@ -116,7 +115,7 @@ func (c *InMemoryCache) Print() {
 	c.mu.Unlock()
 }
 
-func (c *InMemoryCache) delete(id string) {
+func (c *InMemoryCache) delete(id int) {
 	delete(c.data, id)
 }
 

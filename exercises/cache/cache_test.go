@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -8,16 +10,16 @@ import (
 
 func TestCaching(t *testing.T) {
 	cars := []Car{
-		{vinNumber: "1", model: "Mondeo"},
-		{vinNumber: "2", model: "Citroen"},
-		{vinNumber: "3", model: "Audi"},
-		{vinNumber: "4", model: "Jaguar"},
-		{vinNumber: "5", model: "Porshe"},
-		{vinNumber: "6", model: "Ferrari"},
-		{vinNumber: "7", model: "Nissan"},
-		{vinNumber: "8", model: "Alfa Romeo"},
-		{vinNumber: "9", model: "Volvo"},
-		{vinNumber: "10", model: "Volkswagen"},
+		{vinNumber: 1, model: "Mondeo"},
+		{vinNumber: 2, model: "Citroen"},
+		{vinNumber: 3, model: "Audi"},
+		{vinNumber: 4, model: "Jaguar"},
+		{vinNumber: 5, model: "Porshe"},
+		{vinNumber: 6, model: "Ferrari"},
+		{vinNumber: 7, model: "Nissan"},
+		{vinNumber: 8, model: "Alfa Romeo"},
+		{vinNumber: 9, model: "Volvo"},
+		{vinNumber: 10, model: "Volkswagen"},
 	}
 
 	t.Run("Add records to cache with warmup", func(t *testing.T) {
@@ -26,9 +28,9 @@ func TestCaching(t *testing.T) {
 		const maxCap = 10
 		m := NewInMemoryCache(&fifo{}, maxCap,
 			[]Car{
-				{vinNumber: "11", model: "Lamborgini"},
-				{vinNumber: "12", model: "Tata"},
-				{vinNumber: "13", model: "BMW"}})
+				{vinNumber: 11, model: "Lamborgini"},
+				{vinNumber: 12, model: "Tata"},
+				{vinNumber: 13, model: "BMW"}})
 
 		wait := sync.WaitGroup{}
 		ready := sync.WaitGroup{}
@@ -116,13 +118,13 @@ func TestCaching(t *testing.T) {
 
 		const maxCap = 13
 		warmupCars := []Car{
-			{vinNumber: "1", model: "MondeoOrg"},
-			{vinNumber: "2", model: "CitroenOrg"},
-			{vinNumber: "3", model: "AudiOrg"}}
+			{vinNumber: 1, model: "MondeoOrg"},
+			{vinNumber: 2, model: "CitroenOrg"},
+			{vinNumber: 3, model: "AudiOrg"}}
 
 		m := NewInMemoryCache(&fifo{}, maxCap, warmupCars)
 
-		originals := make(map[string]Car)
+		originals := make(map[int]Car)
 		for _, car := range warmupCars {
 			carFromCache, err := m.Read(car.Id())
 			if err != nil {
@@ -181,9 +183,9 @@ func TestCaching(t *testing.T) {
 			}
 		}()
 		NewInMemoryCache(&fifo{}, 2, []Car{
-			{vinNumber: "11", model: "Lamborgini"},
-			{vinNumber: "12", model: "Tata"},
-			{vinNumber: "13", model: "BMW"}})
+			{vinNumber: 11, model: "Lamborgini"},
+			{vinNumber: 12, model: "Tata"},
+			{vinNumber: 13, model: "BMW"}})
 	})
 }
 
@@ -191,16 +193,16 @@ func TestPurge(t *testing.T) {
 	t.Parallel()
 
 	cars := []Car{
-		{vinNumber: "1", model: "Mondeo"},
-		{vinNumber: "2", model: "Citroen"},
-		{vinNumber: "3", model: "Audi"},
-		{vinNumber: "4", model: "Jaguar"},
-		{vinNumber: "5", model: "Porshe"},
-		{vinNumber: "6", model: "Ferrari"},
-		{vinNumber: "7", model: "Nissan"},
-		{vinNumber: "8", model: "Alfa Romeo"},
-		{vinNumber: "9", model: "Volvo"},
-		{vinNumber: "10", model: "Volkswagen"},
+		{vinNumber: 1, model: "Mondeo"},
+		{vinNumber: 2, model: "Citroen"},
+		{vinNumber: 3, model: "Audi"},
+		{vinNumber: 4, model: "Jaguar"},
+		{vinNumber: 5, model: "Porshe"},
+		{vinNumber: 6, model: "Ferrari"},
+		{vinNumber: 7, model: "Nissan"},
+		{vinNumber: 8, model: "Alfa Romeo"},
+		{vinNumber: 9, model: "Volvo"},
+		{vinNumber: 10, model: "Volkswagen"},
 	}
 
 	m := NewInMemoryCache(&fifo{}, 10, nil)
@@ -250,10 +252,100 @@ func TestPurge(t *testing.T) {
 	}
 }
 
+//TODO reduce number of allocations in test and rewrite tests to use RunParallel
 func BenchmarkReads(b *testing.B) {
+	var table = []struct {
+		cacheCapacity             int
+		numberOfConcurrentReaders int
+	}{
+		{cacheCapacity: 30, numberOfConcurrentReaders: 100},
+		// {cacheCapacity: 300, numberOfConcurrentReaders: 1000},
+		// {cacheCapacity: 2400, numberOfConcurrentReaders: 8000},
+	}
 
+	for _, v := range table {
+		b.Run(fmt.Sprintf("cacheCapacity: %d, numberOfConcurrentReaders: %d", v.cacheCapacity, v.numberOfConcurrentReaders), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				main := sync.WaitGroup{}
+				ready := sync.WaitGroup{}
+				signal := make(chan struct{})
+
+				main.Add(v.numberOfConcurrentReaders + 1)
+				ready.Add(v.numberOfConcurrentReaders)
+
+				m := NewInMemoryCache(&fifo{}, v.cacheCapacity, nil)
+
+				// This for brings more alocations
+				for j := 1; j <= v.cacheCapacity; j++ {
+					car := Car{vinNumber: i, model: fmt.Sprintf("CarModel_%d", j)}
+					m.Update(car)
+				}
+
+				for i := 0; i < v.numberOfConcurrentReaders; i++ {
+					go func(id int) {
+						defer main.Done()
+						ready.Done()
+						ready.Wait()
+						<-signal
+						m.Read(rand.Intn(v.cacheCapacity) + 1)
+					}(i)
+				}
+
+				go func() {
+					defer main.Done()
+					ready.Wait()
+					b.StartTimer()
+					close(signal)
+				}()
+				main.Wait()
+			}
+		})
+	}
 }
 
 func BenchmarkWrites(b *testing.B) {
+	var table = []struct {
+		cacheCapacity            int
+		numberOfConcurrentWrites int
+	}{
+		{cacheCapacity: 10, numberOfConcurrentWrites: 20},
+		{cacheCapacity: 300, numberOfConcurrentWrites: 1000},
+		// {cacheCapacity: 2400, numberOfConcurrentWrites: 8000},
+	}
 
+	for _, v := range table {
+		b.Run(fmt.Sprintf("cacheCapacity: %d, numberOfConcurrentWrites: %d", v.cacheCapacity, v.numberOfConcurrentWrites), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				main := sync.WaitGroup{}
+				ready := sync.WaitGroup{}
+				signal := make(chan struct{})
+
+				ready.Add(v.numberOfConcurrentWrites)
+				main.Add(v.numberOfConcurrentWrites + 1)
+
+				m := NewInMemoryCache(&fifo{}, v.cacheCapacity, nil)
+				for j := 0; j < v.numberOfConcurrentWrites; j++ {
+					car := Car{vinNumber: i, model: fmt.Sprintf("CarModel_%d", j)}
+					go func(c Car) {
+						defer main.Done()
+						ready.Done()
+						ready.Wait()
+
+						<-signal
+						m.Update(c)
+					}(car)
+				}
+
+				go func() {
+					defer main.Done()
+					ready.Wait()
+					b.StartTimer()
+					close(signal)
+				}()
+				main.Wait()
+			}
+		})
+	}
 }

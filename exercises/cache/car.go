@@ -1,12 +1,12 @@
 package main
 
 type Car struct {
-	vinNumber string
+	vinNumber int
 	model     string
 	serialNum string
 }
 
-func (c Car) Id() string {
+func (c Car) Id() int {
 	return c.vinNumber
 }
 
