@@ -11,9 +11,13 @@ type Result struct {
 	err  error
 }
 
-func main() {
+func RunDone() {
+	checkStatusJobConsumer()
+}
+
+func checkStatusJobConsumer() {
 	done := make(chan struct{})
-	producer := checkStatus([]string{"https://google.com", "https://onet.pl", "https://sth.c", "https://medium.com", "https://youtube.com", "https://olaf.comm", "http://error.error"}, done)
+	producer := checkStatusJob([]string{"https://google.com", "https://onet.pl", "https://sth.c", "https://medium.com", "https://youtube.com", "https://olaf.comm", "http://error.error"}, done)
 
 	var errCnt int
 	for result := range producer {
@@ -30,7 +34,7 @@ func main() {
 	}
 }
 
-func checkStatus(urls []string, interupt <-chan struct{}) <-chan Result {
+func checkStatusJob(urls []string, interupt <-chan struct{}) <-chan Result {
 	results := make(chan Result)
 
 	go func() {
