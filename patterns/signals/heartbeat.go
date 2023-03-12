@@ -10,7 +10,30 @@ const pulseFreq = 3 * time.Second
 const jobSchedulerFreq = 10 * time.Second
 
 func RunHeartBeatExample() {
-	expensiveWorkConsumer()
+	const numberOfJobs = 20
+
+	done := make(chan struct{})
+	heartbeat, jobWorker := doExpensiveWork(done, numberOfJobs)
+
+	defer log.Printf("Leaving expensiveWorkConsumer...\n")
+	go func() {
+		defer close(done)
+		time.Sleep(30 * time.Second)
+		log.Printf("Accident happened, killing process..")
+
+	}()
+
+	for {
+		select {
+		case <-done:
+			return
+		case <-heartbeat:
+			log.Printf("Jobs process is healthy..")
+		case jobId := <-jobWorker:
+			log.Printf("Job#%d has been finished..", jobId)
+		}
+	}
+
 }
 
 func doExpensiveWork(done <-chan struct{}, ids int) (<-chan time.Time, <-chan interface{}) {
@@ -54,31 +77,4 @@ func doExpensiveWork(done <-chan struct{}, ids int) (<-chan time.Time, <-chan in
 		}
 	}()
 	return heartbeat, jobs
-}
-
-func expensiveWorkConsumer() {
-	const numberOfJobs = 20
-
-	done := make(chan struct{})
-	heartbeat, jobWorker := doExpensiveWork(done, numberOfJobs)
-
-	defer log.Printf("Leaving expensiveWorkConsumer...\n")
-	go func() {
-		defer close(done)
-		time.Sleep(30 * time.Second)
-		log.Printf("Accident happened, killing process..")
-
-	}()
-
-	for {
-		select {
-		case <-done:
-			return
-		case <-heartbeat:
-			log.Printf("Jobs process is healthy..")
-		case jobId := <-jobWorker:
-			log.Printf("Job#%d has been finished..", jobId)
-		}
-	}
-
 }
