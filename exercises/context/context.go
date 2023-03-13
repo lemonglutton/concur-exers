@@ -16,7 +16,7 @@ type Context struct {
 type Cancelfunc func()
 
 func Background() Context {
-	return Context{make(chan interface{})}
+	return Context{}
 }
 
 func WithCancel(parent Context) (Context, Cancelfunc) {
@@ -24,12 +24,10 @@ func WithCancel(parent Context) (Context, Cancelfunc) {
 	ctx := Context{cancel}
 
 	cancelFunc := func() {
-		cancel <- struct{}{}
+		close(cancel)
 	}
 
 	go func() {
-		defer close(cancel)
-
 		select {
 		case <-parent.Done():
 			return
@@ -41,31 +39,27 @@ func WithCancel(parent Context) (Context, Cancelfunc) {
 	return ctx, cancelFunc
 }
 
-func WithDeadline(parent Context, d time.Time) (Context, Cancelfunc) {
+func WithDeadline(parent Context, now time.Time, d time.Time) (Context, Cancelfunc) {
 	deadline := make(chan interface{})
 	cancel := make(chan struct{})
 
-	ctx := Context{deadline}
-	now := time.Now().UTC()
-	diff := d.Sub(now)
-
-	sendDeadline := func() {
-		deadline <- struct{}{}
+	if now.After(d) {
+		return Context{}, nil
 	}
+	diff := d.Sub(now)
+	ctx := Context{deadline}
 
 	cancelFunc := func() {
-		cancel <- struct{}{}
+		close(cancel)
 	}
 
 	go func() {
 		defer close(deadline)
-		defer close(cancel)
 
 		select {
 		case <-parent.Done():
 			return
 		case <-time.After(diff):
-			sendDeadline()
 		case <-cancel:
 			return
 		}
@@ -83,12 +77,11 @@ func WithTimeout(parent Context, d time.Duration) (Context, Cancelfunc) {
 	ctx := Context{timeout}
 
 	cancelFunc := func() {
-		cancel <- struct{}{}
+		close(cancel)
 	}
 
 	go func() {
 		defer close(timeout)
-		defer close(cancel)
 
 		select {
 		case <-parent.Done():

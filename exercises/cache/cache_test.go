@@ -22,7 +22,7 @@ func TestCaching(t *testing.T) {
 		{vinNumber: 10, model: "Volkswagen"},
 	}
 
-	t.Run("Add records to cache with warmup", func(t *testing.T) {
+	t.Run("Add records to cache with concurrent writers and with warmup set up", func(t *testing.T) {
 		t.Parallel()
 
 		const maxCap = 10
@@ -64,7 +64,7 @@ func TestCaching(t *testing.T) {
 		}
 	})
 
-	t.Run("Add records to cache with small capacity and multiple concurrent readers", func(t *testing.T) {
+	t.Run("Add records to cache with concurrent writers, small capacity and multiple concurrent readers", func(t *testing.T) {
 		t.Parallel()
 
 		const maxCap = 2
@@ -113,7 +113,7 @@ func TestCaching(t *testing.T) {
 		}
 	})
 
-	t.Run("Modify records if they are already in cache", func(t *testing.T) {
+	t.Run("Add records to cache with concurrent writers, where some of the records needs to be only modified", func(t *testing.T) {
 		t.Parallel()
 
 		const maxCap = 13
@@ -174,7 +174,7 @@ func TestCaching(t *testing.T) {
 		}
 	})
 
-	t.Run("Too high warump set", func(t *testing.T) {
+	t.Run("Initialize cache with warmup that exceeds cache capacity", func(t *testing.T) {
 		t.Parallel()
 
 		defer func() {

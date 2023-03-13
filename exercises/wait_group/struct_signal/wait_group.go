@@ -2,7 +2,6 @@ package main
 
 import (
 	"sync"
-	"time"
 )
 
 type Waiter interface {
@@ -25,8 +24,6 @@ func (wg *WaitGroup) Wait() {
 	go func() {
 		defer close(wg.rdy)
 		for {
-			time.Sleep(2 * time.Second)
-
 			wg.mu.Lock()
 			if wg.cnt == 0 {
 				wg.rdy <- struct{}{}

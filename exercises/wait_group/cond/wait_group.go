@@ -22,7 +22,7 @@ func (wg *WaitGroup) Done() {
 	wg.ready.L.Lock()
 	wg.cnt -= 1
 	if wg.cnt == 0 {
-		wg.ready.Signal()
+		wg.ready.Broadcast()
 	}
 	wg.ready.L.Unlock()
 }
