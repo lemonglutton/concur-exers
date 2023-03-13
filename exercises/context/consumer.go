@@ -1,24 +1,25 @@
 package main
 
-import (
-	"time"
-)
+import "fmt"
 
 func RunContextExample() {
 	b := Background()
-	parent, cancelParent := WithTimeout(b, time.Duration(2*time.Second))
-	child, _ := WithCancel(parent)
+	parent, cancelParent := WithCancel(&b)
+	child, cancelChild := WithCancel(parent)
 
 	parentCopy := parent.Done()
 	childCopy := child.Done()
+	cancelChild()
+	cancelParent()
 	for i := 0; i < 2; i++ {
 		select {
 		case <-parentCopy:
-			cancelParent()
 			parentCopy = nil
 
 		case <-childCopy:
 			childCopy = nil
 		}
 	}
+	fmt.Println(parent.Err(), child.Err())
+
 }
