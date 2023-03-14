@@ -1,12 +1,16 @@
 package main
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type MultiListener interface {
 	Subscribe() <-chan interface{}
 	Unsubscribe(c <-chan interface{})
 	Broadcast(data interface{})
 	Run(ctx context.Context)
+	Kill()
 }
 
 type Broadcaster struct {
@@ -31,9 +35,17 @@ func (b *Broadcaster) Broadcast(data interface{}) {
 	b.input <- data
 }
 
-func (b *Broadcaster) Run(ctx context.Context) {
+func (b *Broadcaster) Run(ctx context.Context, pulseRate time.Duration) chan<- interface{} {
+	heartBeat := make(chan interface{})
+	pulse := time.NewTicker(pulseRate)
+
 	go func() {
-		defer b.kill()
+		sendPulse := func(t time.Time) {
+			select {
+			case heartBeat <- struct{}{}:
+			default:
+			}
+		}
 		for {
 			select {
 			case listener, ok := <-b.register:
@@ -69,15 +81,19 @@ func (b *Broadcaster) Run(ctx context.Context) {
 				}
 			case <-ctx.Done():
 				return
-
+			case t := <-pulse.C:
+				sendPulse(t)
 			}
 		}
 	}()
+
+	return heartBeat
 }
 
-func (b *Broadcaster) kill() {
-	close(b.register)
-	close(b.unregister)
+func (b *Broadcaster) Kill() {
+	for _, listener := range b.listeners {
+		close(listener)
+	}
 }
 
 func NewBroadcaster() *Broadcaster {
