@@ -1,99 +1,90 @@
 package main
 
-type MultiListener interface {
-	Subscribe()
-	Unsubscribe()
-	Broadcast()
-	Kill()
-}
+import "context"
 
-type Listener struct {
-	dataStream chan interface{}
-	doneStream chan interface{}
+type MultiListener interface {
+	Subscribe() <-chan interface{}
+	Unsubscribe(c <-chan interface{})
+	Broadcast(data interface{})
+	Run(ctx context.Context)
 }
 
 type Broadcaster struct {
-	listeners  map[<-chan interface{}]Listener
-	register   chan Listener
+	listeners  []chan interface{}
+	register   chan (chan interface{})
 	unregister chan (<-chan interface{})
-	kill       chan interface{}
 	input      chan interface{}
 }
 
 func (b *Broadcaster) Subscribe() <-chan interface{} {
-	listener := Listener{dataStream: make(chan interface{}), doneStream: make(chan interface{})}
-	b.register <- listener
+	newListener := make(chan interface{})
+	b.register <- newListener
 
-	go func(l Listener) {
-		for {
-			select {
-			case l.dataStream <- b.input:
-				return
-
-			case <-l.doneStream:
-				close(l.dataStream)
-				return
-
-			case <-b.kill:
-				close(l.dataStream)
-				return
-			}
-
-		}
-	}(listener)
-
-	return listener.dataStream
-}
-
-func (b *Broadcaster) Broadcast(data interface{}) {
-	for _, listener := range b.listeners {
-		go func(l Listener) {
-			l.dataStream <- data
-		}(listener)
-	}
+	return newListener
 }
 
 func (b *Broadcaster) Unsubscribe(c <-chan interface{}) {
 	b.unregister <- c
 }
 
-func (b *Broadcaster) run() {
-	defer b.cleanUp()
-	for {
-		select {
-		case listener, ok := <-b.register:
-			if !ok {
-				return
-			}
-			b.listeners[listener.dataStream] = listener
-		case listenerDataStream := <-b.unregister:
-			listener := b.listeners[listenerDataStream]
-
-			close(listener.dataStream)
-			delete(b.listeners, listenerDataStream)
-			return
-
-		}
-	}
+func (b *Broadcaster) Broadcast(data interface{}) {
+	b.input <- data
 }
 
-func (b *Broadcaster) cleanUp() {
+func (b *Broadcaster) Run(ctx context.Context) {
+	go func() {
+		defer b.kill()
+		for {
+			select {
+			case listener, ok := <-b.register:
+				if !ok {
+					return
+				}
+				b.listeners = append(b.listeners, listener)
+			case listenerToRemove, ok := <-b.unregister:
+				if !ok {
+					return
+				}
+				for i, listener := range b.listeners {
+					if listener == listenerToRemove {
+						b.listeners[i] = b.listeners[len(b.listeners)-1]
+						b.listeners = b.listeners[:len(b.listeners)-1]
+						close(listener)
+						break
+					}
+
+				}
+			case val, ok := <-b.input:
+				if !ok {
+					return
+				}
+
+				for _, listener := range b.listeners {
+					select {
+					case listener <- val:
+					case <-ctx.Done():
+						return
+
+					}
+				}
+			case <-ctx.Done():
+				return
+
+			}
+		}
+	}()
+}
+
+func (b *Broadcaster) kill() {
 	close(b.register)
 	close(b.unregister)
-}
-
-func (b *Broadcaster) Kill() {
-	close(b.kill)
 }
 
 func NewBroadcaster() *Broadcaster {
 	b := Broadcaster{
 		listeners:  nil,
-		register:   make(chan Listener),
+		register:   make(chan (chan interface{})),
 		unregister: make(chan (<-chan interface{})),
-		kill:       make(chan interface{}),
 	}
-	b.run()
-
 	return &b
 }
