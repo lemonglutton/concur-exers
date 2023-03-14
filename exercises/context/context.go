@@ -37,9 +37,9 @@ func WithCancel(parent *Context) (*Context, Cancelfunc) {
 	cancelFunc := func() {
 		ctx.mu.Lock()
 		if !ctx.closed {
-			close(cancel)
 			ctx.closed = true
 			ctx.err = errContextWasCancelled
+			close(cancel)
 		}
 		ctx.mu.Unlock()
 	}
@@ -48,9 +48,9 @@ func WithCancel(parent *Context) (*Context, Cancelfunc) {
 		defer func() {
 			ctx.mu.Lock()
 			if !ctx.closed {
-				close(cancel)
 				ctx.closed = true
 				ctx.err = errContextWasCancelled
+				close(cancel)
 			}
 			ctx.mu.Unlock()
 		}()
@@ -79,10 +79,10 @@ func WithDeadline(parent *Context, now time.Time, d time.Time) (*Context, Cancel
 	cancelFunc := func() {
 		ctx.mu.Lock()
 		if !ctx.closed {
-			close(cancel)
-			close(deadline)
 			ctx.closed = true
 			ctx.err = errContextWasCancelled
+			close(cancel)
+			close(deadline)
 		}
 		ctx.mu.Unlock()
 	}
@@ -91,10 +91,10 @@ func WithDeadline(parent *Context, now time.Time, d time.Time) (*Context, Cancel
 		defer func() {
 			ctx.mu.Lock()
 			if !ctx.closed {
-				close(deadline)
-				close(cancel)
 				ctx.closed = true
 				ctx.err = errContextDeadlineExceeded
+				close(deadline)
+				close(cancel)
 			}
 			ctx.mu.Unlock()
 		}()
@@ -125,10 +125,10 @@ func WithTimeout(parent *Context, d time.Duration) (*Context, Cancelfunc) {
 	cancelFunc := func() {
 		ctx.mu.Lock()
 		if !ctx.closed {
-			close(timeout)
-			close(cancel)
 			ctx.closed = true
 			ctx.err = errContextWasCancelled
+			close(timeout)
+			close(cancel)
 		}
 		ctx.mu.Unlock()
 	}
@@ -137,10 +137,10 @@ func WithTimeout(parent *Context, d time.Duration) (*Context, Cancelfunc) {
 		defer func() {
 			ctx.mu.Lock()
 			if !ctx.closed {
-				close(timeout)
-				close(cancel)
 				ctx.closed = true
 				ctx.err = errContextTimeoutExceeded
+				close(timeout)
+				close(cancel)
 			}
 			ctx.mu.Unlock()
 		}()

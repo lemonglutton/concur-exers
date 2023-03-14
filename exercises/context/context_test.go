@@ -1,274 +1,236 @@
 package main
 
-// import (
-// 	"testing"
-// 	"time"
-// )
+import (
+	"testing"
+	"time"
+)
+
+const cancelContextErrMsg = "Context was cancelled"
+const timeoutContextErrMsg = "Context timeout exceeded"
+const deadlineContextErrMsg = "Context didn't meet deadline"
 
 // // Some naive tests for the Context package implementation
-// func TestWithCancel(t *testing.T) {
+func TestWithCancel(t *testing.T) {
 
-// 	t.Run("Parent should close it's and child's channels when cancelation signal comes", func(t *testing.T) {
-// 		// t.Parallel()
+	t.Run("Parent should close it's and child's channels when cancelation signal comes", func(t *testing.T) {
+		t.Parallel()
 
-// 		b := Background()
-// 		parent, cancelParent := WithCancel(b)
-// 		child, _ := WithCancel(parent)
+		b := Background()
+		parent, cancelParent := WithCancel(&b)
+		child, _ := WithCancel(parent)
 
-// 		go func() {
-// 			<-time.After(15 * time.Second)
-// 			t.Errorf("Test timeout..")
-// 		}()
-// 		cancelParent()
+		go func() {
+			<-time.After(15 * time.Second)
+			t.Errorf("Test timeout..")
+		}()
+		cancelParent()
 
-// 		parentCopy := parent.Done()
-// 		childCopy := child.Done()
-// 		for i := 0; i < 3; i++ {
-// 			select {
-// 			case <-parentCopy:
-// 				parentCopy = nil
+		parentCopy := parent.Done()
+		childCopy := child.Done()
+		for i := 0; i < 2; i++ {
+			select {
+			case <-parentCopy:
+				parentCopy = nil
 
-// 			case <-childCopy:
-// 				childCopy = nil
-// 			}
-// 		}
+			case <-childCopy:
+				childCopy = nil
+			}
+		}
 
-// 		if parentCopy != nil || childCopy != nil {
-// 			t.Errorf("Expected: parentChannel = nil, childChannel = nil, Actual:parentChannel = %v childChannel = %v\n", parentCopy, childCopy)
-// 		}
-// 	})
+		if parent.Err().Error() != cancelContextErrMsg || child.Err().Error() != cancelContextErrMsg {
+			t.Errorf("Expected: parentErrMsg = \"%v\", childErrMsg = \"%v\", Actual: parentErrMsg = \"%v\" childErrMsg = \"%v\"\n", cancelContextErrMsg, cancelContextErrMsg, parent.Err().Error(), child.Err().Error())
+		}
+	})
 
-// 	t.Run("Child shouldn't close parent's channel when its cancelation signal comes, only channel which belongs to him", func(t *testing.T) {
-// 		// t.Parallel()
+	t.Run("Child shouldn't close parent's channel when its cancelation signal comes, only channel which belongs to him", func(t *testing.T) {
+		t.Parallel()
 
-// 		b := Background()
-// 		parent, _ := WithCancel(b)
-// 		child, cancelChild := WithCancel(parent)
+		b := Background()
+		parent, cancelParent := WithCancel(&b)
+		defer cancelParent()
 
-// 		go func() {
-// 			<-time.After(5 * time.Second)
-// 			t.Errorf("Test timeout..")
-// 		}()
-// 		cancelChild()
+		child, cancelChild := WithCancel(parent)
+		go func() {
+			<-time.After(5 * time.Second)
+			t.Errorf("Test timeout..")
+		}()
+		cancelChild()
 
-// 		parentCopy := parent.Done()
-// 		childCopy := child.Done()
+		if parent.Err() != nil && child.Err().Error() != cancelContextErrMsg {
+			t.Errorf("Expected: parentErrMsg = \"%v\", childErrMsg = \"%v\", Actual: parentErrMsg = \"%v\"0 childErrMsg = \"%v\"n", cancelContextErrMsg, cancelContextErrMsg, parent.Err().Error(), child.Err().Error())
+		}
+	})
+}
 
-// 	goOut:
-// 		for {
-// 			select {
-// 			case <-parentCopy:
-// 				parentCopy = nil
-// 			case <-childCopy:
-// 				childCopy = nil
-// 			case <-time.After(2 * time.Second):
-// 				break goOut
+func TestWithTimeout(t *testing.T) {
+	t.Run("Writing to cancel channel after it being closed due to timeout expiration shouldn't return panic", func(t *testing.T) {
+		t.Parallel()
 
-// 			}
-// 		}
+		b := Background()
+		parent, cancelParent := WithTimeout(&b, time.Duration(2*time.Second))
+		child, _ := WithCancel(parent)
 
-// 		if parentCopy != nil || childCopy != nil {
-// 			t.Errorf("Expected: parentChannel = nil, childChannel = nil, Actual:parentChannel = %v childChannel = %v\n", parentCopy, childCopy)
-// 		}
-// 	})
-// }
+		go func() {
+			<-time.After(5 * time.Second)
+			t.Errorf("Test timeout..")
+		}()
 
-// func TestWithTimeout(t *testing.T) {
-// 	t.Run("Writing to cancel channel after it being closed due to timeout expiration shouldn't return panic", func(t *testing.T) {
-// 		// t.Parallel()
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("Expected: Code should not panic, Actual: Code panicked")
+			}
+		}()
 
-// 		b := Background()
-// 		parent, cancelParent := WithTimeout(b, time.Duration(2*time.Second))
-// 		child, _ := WithCancel(parent)
+		parentCopy := parent.Done()
+		childCopy := child.Done()
+		for i := 0; i < 2; i++ {
+			select {
+			case <-parentCopy:
+				cancelParent()
+				parentCopy = nil
 
-// 		go func() {
-// 			<-time.After(5 * time.Second)
-// 			t.Errorf("Test timeout..")
-// 		}()
+			case <-childCopy:
+				childCopy = nil
+			}
+		}
+	})
 
-// 		defer func() {
-// 			if r := recover(); r != nil {
-// 				t.Errorf("Expected: Code should not panic, Actual: Code panicked")
-// 			}
-// 		}()
+	t.Run("Parent should close it's and child's channels when timeout expires", func(t *testing.T) {
+		t.Parallel()
 
-// 		parentCopy := parent.Done()
-// 		childCopy := child.Done()
-// 		for i := 0; i < 2; i++ {
-// 			select {
-// 			case <-parentCopy:
-// 				cancelParent()
-// 				parentCopy = nil
+		b := Background()
+		parent, _ := WithTimeout(&b, time.Duration(2*time.Second))
+		child, _ := WithCancel(parent)
 
-// 			case <-childCopy:
-// 				childCopy = nil
-// 			}
-// 		}
-// 	})
+		go func() {
+			<-time.After(5 * time.Second)
+			t.Errorf("Test timeout..")
+		}()
 
-// 	t.Run("Parent should close it's and child's channels when timeout expires", func(t *testing.T) {
-// 		// t.Parallel()
+		parentCopy := parent.Done()
+		childCopy := child.Done()
+		for i := 0; i < 2; i++ {
+			select {
+			case <-parentCopy:
+				parentCopy = nil
 
-// 		b := Background()
-// 		parent, _ := WithTimeout(b, time.Duration(2*time.Second))
-// 		child, _ := WithCancel(parent)
+			case <-childCopy:
+				childCopy = nil
+			}
+		}
 
-// 		go func() {
-// 			<-time.After(5 * time.Second)
-// 			t.Errorf("Test timeout..")
-// 		}()
+		if parent.Err().Error() != timeoutContextErrMsg || child.Err().Error() != cancelContextErrMsg {
+			t.Errorf("Expected: parentErrMsg = \"%v\", childErrMsg = \"%v\", Actual: parentErrMsg = \"%v\" childErrMsg = \"%v\"\n", timeoutContextErrMsg, cancelContextErrMsg, parent.Err().Error(), child.Err().Error())
+		}
+	})
 
-// 		parentCopy := parent.Done()
-// 		childCopy := child.Done()
-// 		for i := 0; i < 2; i++ {
-// 			select {
-// 			case <-parentCopy:
-// 				parentCopy = nil
+	t.Run("Child shouldn't close parent's channel when its timeout expires, only channel which belongs to him", func(t *testing.T) {
+		t.Parallel()
 
-// 			case <-childCopy:
-// 				childCopy = nil
-// 			}
-// 		}
+		b := Background()
+		parent, _ := WithCancel(&b)
+		child, _ := WithTimeout(parent, time.Duration(1*time.Nanosecond))
 
-// 		if parentCopy != nil || childCopy != nil {
-// 			t.Errorf("Expected: parentChannel = nil, childChannel = nil, Actual:parentChannel = %v childChannel = %v\n", parentCopy, childCopy)
-// 		}
-// 	})
+		go func() {
+			<-time.After(5 * time.Second)
+			t.Errorf("Test timeout..")
+		}()
+		<-child.Done()
 
-// 	t.Run("Child shouldn't close parent's channel when its timeout expires, only channel which belongs to him", func(t *testing.T) {
-// 		// t.Parallel()
+		if parent.Err() != nil && child.Err().Error() != cancelContextErrMsg {
+			t.Errorf("Expected: parentErrMsg = \"%v\", childErrMsg = \"%v\", Actual: parentErrMsg = \"%v\"0 childErrMsg = \"%v\"n", cancelContextErrMsg, cancelContextErrMsg, parent.Err().Error(), child.Err().Error())
+		}
+	})
+}
 
-// 		b := Background()
-// 		parent, _ := WithCancel(b)
-// 		child, _ := WithTimeout(parent, time.Duration(2*time.Second))
+func TestWithDeadline(t *testing.T) {
+	t.Run("Writing to cancel channel after it being closed due to deadline expiration shouldn't return panic", func(t *testing.T) {
+		t.Parallel()
 
-// 		go func() {
-// 			<-time.After(5 * time.Second)
-// 			t.Errorf("Test timeout..")
-// 		}()
+		b := Background()
+		parent, cancelParent := WithDeadline(&b, time.Now().Local(), time.Now().Local().Add(time.Duration(time.Second*2)))
+		child, _ := WithCancel(parent)
 
-// 		parentCopy := parent.Done()
-// 		childCopy := child.Done()
-// 	goOut:
-// 		for {
-// 			select {
-// 			case <-parentCopy:
-// 				parentCopy = nil
-// 			case <-childCopy:
-// 				childCopy = nil
-// 			case <-time.After(2 * time.Second):
-// 				break goOut
-// 			}
-// 		}
+		go func() {
+			<-time.After(5 * time.Second)
+			t.Errorf("Test timeout..")
+		}()
 
-// 		if parentCopy == nil || childCopy != nil {
-// 			t.Errorf("Expected: parentChannel != nil, childChannel = nil, Actual:parentChannel = %v childChannel = %v\n", parentCopy, childCopy)
-// 		}
-// 	})
-// }
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("Expected: Code should not panic, Actual: Code panicked")
+			}
+		}()
 
-// func TestWithDeadline(t *testing.T) {
-// 	t.Run("Writing to cancel channel after it being closed due to deadline expiration shouldn't return panic", func(t *testing.T) {
-// 		// t.Parallel()
+		parentCopy := parent.Done()
+		childCopy := child.Done()
+		for i := 0; i < 2; i++ {
+			select {
+			case <-parentCopy:
+				cancelParent()
+				parentCopy = nil
 
-// 		b := Background()
-// 		parent, cancelParent := WithDeadline(b, time.Now().Local(), time.Now().Local().Add(time.Duration(time.Second*5)))
-// 		child, _ := WithCancel(parent)
+			case <-childCopy:
+				childCopy = nil
+			}
+		}
+	})
 
-// 		go func() {
-// 			<-time.After(8 * time.Second)
-// 			t.Errorf("Test timeout..")
-// 		}()
+	t.Run("Parent should close it's and child's channels when parent's deadline comes", func(t *testing.T) {
+		t.Parallel()
 
-// 		defer func() {
-// 			if r := recover(); r != nil {
-// 				t.Errorf("Expected: Code should not panic, Actual: Code panicked")
-// 			}
-// 		}()
+		b := Background()
+		parent, _ := WithDeadline(&b, time.Now().Local(), time.Now().Local().Add(time.Duration(time.Second*2)))
+		child, _ := WithCancel(parent)
 
-// 		parentCopy := parent.Done()
-// 		childCopy := child.Done()
-// 		for i := 0; i < 2; i++ {
-// 			select {
-// 			case <-parentCopy:
-// 				cancelParent()
-// 				parentCopy = nil
+		go func() {
+			<-time.After(5 * time.Second)
+			t.Errorf("Test timeout..")
+		}()
 
-// 			case <-childCopy:
-// 				childCopy = nil
-// 			}
-// 		}
-// 	})
+		parentCopy := parent.Done()
+		childCopy := child.Done()
+		for i := 0; i < 2; i++ {
+			select {
+			case <-parentCopy:
+				parentCopy = nil
 
-// 	t.Run("Parent should close it's and child's channels when parent's deadline comes", func(t *testing.T) {
-// 		// t.Parallel()
+			case <-childCopy:
+				childCopy = nil
+			}
+		}
 
-// 		b := Background()
-// 		parent, _ := WithDeadline(b, time.Now().Local(), time.Now().Local().Add(time.Duration(time.Second*5)))
-// 		child, _ := WithCancel(parent)
+		if parent.Err().Error() != deadlineContextErrMsg || child.Err().Error() != cancelContextErrMsg {
+			t.Errorf("Expected: parentErrMsg = \"%v\", childErrMsg = \"%v\", Actual: parentErrMsg = \"%v\" childErrMsg = \"%v\"\n", deadlineContextErrMsg, cancelContextErrMsg, parent.Err().Error(), child.Err().Error())
+		}
+	})
 
-// 		go func() {
-// 			<-time.After(8 * time.Second)
-// 			t.Errorf("Test timeout..")
-// 		}()
+	t.Run("Child shouldn't close parent's channel when deadline comes, only channel which belongs to him", func(t *testing.T) {
+		t.Parallel()
 
-// 		parentCopy := parent.Done()
-// 		childCopy := child.Done()
-// 		for i := 0; i < 2; i++ {
-// 			select {
-// 			case <-parentCopy:
-// 				parentCopy = nil
+		b := Background()
+		parent, _ := WithCancel(&b)
+		child, _ := WithDeadline(&b, time.Now().Local(), time.Now().Local().Add(time.Duration(time.Nanosecond)))
 
-// 			case <-childCopy:
-// 				childCopy = nil
-// 			}
-// 		}
+		go func() {
+			<-time.After(5 * time.Second)
+			t.Errorf("Test timeout..")
+		}()
+		<-child.Done()
 
-// 		if parentCopy != nil || childCopy != nil {
-// 			t.Errorf("Expected: parentChannel = nil childChannel = nil, Actual: parentChannel = %v childChannel = %v\n", parentCopy, childCopy)
-// 		}
+		if parent.Err() != nil && child.Err().Error() != deadlineContextErrMsg {
+			t.Errorf("Expected: parentErrMsg = \"%v\", childErrMsg = \"%v\", Actual: parentErrMsg = \"%v\"0 childErrMsg = \"%v\"n", cancelContextErrMsg, cancelContextErrMsg, parent.Err().Error(), child.Err().Error())
+		}
+	})
 
-// 	})
+	t.Run("Deadline context should return Empty, not initialized context, when providing Deadline which has already passed", func(t *testing.T) {
+		t.Parallel()
 
-// 	t.Run("Child shouldn't close parent's channel when deadline comes, only channel which belongs to him", func(t *testing.T) {
-// 		// t.Parallel()
+		b := Background()
+		ctx, cancelCtx := WithDeadline(&b, time.Now().Local(), time.Date(2021, 8, 15, 14, 2, 3, 445, time.Local))
 
-// 		b := Background()
-// 		parent, _ := WithCancel(b)
-// 		child, _ := WithDeadline(b, time.Now().Local(), time.Now().Local().Add(time.Duration(time.Second*5)))
-
-// 		go func() {
-// 			<-time.After(20 * time.Second)
-// 			t.Errorf("Test timeout..")
-// 		}()
-
-// 		parentCopy := parent.Done()
-// 		childCopy := child.Done()
-// 	goOut:
-// 		for {
-// 			select {
-// 			case <-parentCopy:
-// 				parentCopy = nil
-// 			case <-childCopy:
-// 				childCopy = nil
-// 			case <-time.After(7 * time.Second):
-// 				break goOut
-// 			}
-// 		}
-
-// 		if parentCopy == nil || childCopy != nil {
-// 			t.Errorf("Expected: parentChannel != nil, childChannel = nil, Actual: parentChannel = %v, childChannel = %v\n", parentCopy, childCopy)
-// 		}
-// 	})
-
-// 	t.Run("Deadline context should return Empty, not initialized context, when providing Deadline which has already passed", func(t *testing.T) {
-// 		// t.Parallel()
-
-// 		b := Background()
-// 		ctx, cancelCtx := WithDeadline(b, time.Now().Local(), time.Date(2021, 8, 15, 14, 2, 3, 445, time.Local))
-
-// 		if ctx != (Context{}) && cancelCtx != nil {
-// 			t.Errorf("Expected: ctx = Context{}, cancelCtx = nil, Actual: ctx = %v, cancelCtx = %v\n", ctx, cancelCtx)
-// 		}
-// 	})
-// }
+		if *ctx != (Context{}) && cancelCtx != nil {
+			t.Errorf("Expected: ctx = Context{}, cancelCtx = nil, Actual: ctx = %v, cancelCtx = %v\n", ctx, cancelCtx)
+		}
+	})
+}
