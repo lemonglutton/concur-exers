@@ -6,36 +6,38 @@ import (
 )
 
 type MultiListener interface {
-	Subscribe() <-chan interface{}
-	Unsubscribe(c <-chan interface{})
+	Subscribe() Listener
+	Unsubscribe(c Listener)
 	Broadcast(data interface{})
 	Run(ctx context.Context)
-	Kill()
+	RemoveAllListeners()
 }
 
 type Broadcaster struct {
-	listeners  []chan interface{}
-	register   chan (chan interface{})
-	unregister chan (<-chan interface{})
-	input      chan interface{}
+	listeners          map[Listener]struct{}
+	register           chan (Listener)
+	unregister         chan (Listener)
+	input              chan interface{}
+	removeAllListeners chan interface{}
+	heartbeat          chan interface{}
 }
 
-func (b *Broadcaster) Subscribe() <-chan interface{} {
-	newListener := make(chan interface{})
-	b.register <- newListener
+func (b *Broadcaster) Subscribe() Listener {
+	l := Listener{data: make(chan interface{})}
+	b.register <- l
 
-	return newListener
+	return l
 }
 
-func (b *Broadcaster) Unsubscribe(c <-chan interface{}) {
-	b.unregister <- c
+func (b *Broadcaster) Unsubscribe(l Listener) {
+	b.unregister <- l
 }
 
 func (b *Broadcaster) Broadcast(data interface{}) {
 	b.input <- data
 }
 
-func (b *Broadcaster) Run(ctx context.Context, pulseRate time.Duration) chan<- interface{} {
+func (b *Broadcaster) run(pulseRate time.Duration) {
 	heartBeat := make(chan interface{})
 	pulse := time.NewTicker(pulseRate)
 
@@ -52,55 +54,55 @@ func (b *Broadcaster) Run(ctx context.Context, pulseRate time.Duration) chan<- i
 				if !ok {
 					return
 				}
-				b.listeners = append(b.listeners, listener)
-			case listenerToRemove, ok := <-b.unregister:
+				b.listeners[listener] = struct{}{}
+			case listener, ok := <-b.unregister:
 				if !ok {
 					return
 				}
-				for i, listener := range b.listeners {
-					if listener == listenerToRemove {
-						b.listeners[i] = b.listeners[len(b.listeners)-1]
-						b.listeners = b.listeners[:len(b.listeners)-1]
-						close(listener)
-						break
-					}
 
-				}
+				delete(b.listeners, listener)
+				close(listener.data)
+
 			case val, ok := <-b.input:
 				if !ok {
 					return
 				}
-
-				for _, listener := range b.listeners {
-					select {
-					case listener <- val:
-					case <-ctx.Done():
-						return
-
+				if len(b.listeners) > 0 {
+					for listener := range b.listeners {
+						listener.data <- val
 					}
 				}
-			case <-ctx.Done():
-				return
+
 			case t := <-pulse.C:
 				sendPulse(t)
+
+			case <-b.removeAllListeners:
+				for listener := range b.listeners {
+					close(listener.data)
+				}
+				b.listeners = make(map[Listener]struct{})
 			}
 		}
 	}()
-
-	return heartBeat
 }
 
-func (b *Broadcaster) Kill() {
-	for _, listener := range b.listeners {
-		close(listener)
-	}
+func (b *Broadcaster) RemoveAllListeners() {
+	b.removeAllListeners <- struct{}{}
 }
 
-func NewBroadcaster() *Broadcaster {
+func (b *Broadcaster) HealthCheck() <-chan interface{} {
+	return b.heartbeat
+}
+
+func NewBroadcaster(pulseRate time.Duration) *Broadcaster {
 	b := Broadcaster{
-		listeners:  nil,
-		register:   make(chan (chan interface{})),
-		unregister: make(chan (<-chan interface{})),
+		listeners:          nil,
+		register:           make(chan Listener),
+		unregister:         make(chan Listener),
+		removeAllListeners: make(chan interface{}),
+		heartbeat:          make(chan interface{}),
 	}
+	b.run(pulseRate)
+
 	return &b
 }
