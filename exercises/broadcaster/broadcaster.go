@@ -11,6 +11,7 @@ type MultiListener interface {
 	Broadcast(data interface{})
 	Run(ctx context.Context)
 	RemoveAllListeners()
+	HealthCheck() <-chan interface{}
 }
 
 type Broadcaster struct {
@@ -38,16 +39,15 @@ func (b *Broadcaster) Broadcast(data interface{}) {
 }
 
 func (b *Broadcaster) run(pulseRate time.Duration) {
-	heartBeat := make(chan interface{})
-	pulse := time.NewTicker(pulseRate)
-
 	go func() {
+		pulse := time.NewTicker(pulseRate)
 		sendPulse := func(t time.Time) {
 			select {
-			case heartBeat <- struct{}{}:
+			case b.heartbeat <- struct{}{}:
 			default:
 			}
 		}
+
 		for {
 			select {
 			case listener, ok := <-b.register:
@@ -67,10 +67,9 @@ func (b *Broadcaster) run(pulseRate time.Duration) {
 				if !ok {
 					return
 				}
-				if len(b.listeners) > 0 {
-					for listener := range b.listeners {
-						listener.data <- val
-					}
+
+				for listener := range b.listeners {
+					listener.data <- val
 				}
 
 			case t := <-pulse.C:
@@ -85,7 +84,6 @@ func (b *Broadcaster) run(pulseRate time.Duration) {
 		}
 	}()
 }
-
 func (b *Broadcaster) RemoveAllListeners() {
 	b.removeAllListeners <- struct{}{}
 }
@@ -96,11 +94,12 @@ func (b *Broadcaster) HealthCheck() <-chan interface{} {
 
 func NewBroadcaster(pulseRate time.Duration) *Broadcaster {
 	b := Broadcaster{
-		listeners:          nil,
+		listeners:          make(map[Listener]struct{}),
 		register:           make(chan Listener),
 		unregister:         make(chan Listener),
 		removeAllListeners: make(chan interface{}),
 		heartbeat:          make(chan interface{}),
+		input:              make(chan interface{}),
 	}
 	b.run(pulseRate)
 
