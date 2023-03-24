@@ -14,8 +14,8 @@ type Contexter interface {
 type Context struct {
 	finish chan interface{}
 	closed bool
-	mu     sync.Mutex
 	err    error
+	once   sync.Once
 }
 
 type Cancelfunc func()
@@ -32,28 +32,18 @@ var (
 
 func WithCancel(parent *Context) (*Context, Cancelfunc) {
 	cancel := make(chan interface{})
-	ctx := Context{cancel, false, sync.Mutex{}, nil}
+	ctx := Context{cancel, false, nil, sync.Once{}}
 
 	cancelFunc := func() {
-		ctx.mu.Lock()
-		if !ctx.closed {
+		ctx.once.Do(func() {
 			ctx.closed = true
 			ctx.err = errContextWasCancelled
 			close(cancel)
-		}
-		ctx.mu.Unlock()
+		})
 	}
 
 	go func() {
-		defer func() {
-			ctx.mu.Lock()
-			if !ctx.closed {
-				ctx.closed = true
-				ctx.err = errContextWasCancelled
-				close(cancel)
-			}
-			ctx.mu.Unlock()
-		}()
+		defer cancelFunc()
 
 		select {
 		case <-parent.Done():
@@ -74,29 +64,25 @@ func WithDeadline(parent *Context, now time.Time, d time.Time) (*Context, Cancel
 		return &Context{}, nil
 	}
 	diff := d.Sub(now)
-	ctx := Context{deadline, false, sync.Mutex{}, nil}
+	ctx := Context{deadline, false, nil, sync.Once{}}
 
 	cancelFunc := func() {
-		ctx.mu.Lock()
-		if !ctx.closed {
+		ctx.once.Do(func() {
 			ctx.closed = true
 			ctx.err = errContextWasCancelled
 			close(cancel)
 			close(deadline)
-		}
-		ctx.mu.Unlock()
+		})
 	}
 
 	go func() {
 		defer func() {
-			ctx.mu.Lock()
-			if !ctx.closed {
+			ctx.once.Do(func() {
 				ctx.closed = true
 				ctx.err = errContextDeadlineExceeded
-				close(deadline)
 				close(cancel)
-			}
-			ctx.mu.Unlock()
+				close(deadline)
+			})
 		}()
 
 		select {
@@ -120,29 +106,25 @@ func (ctx *Context) Err() error {
 func WithTimeout(parent *Context, d time.Duration) (*Context, Cancelfunc) {
 	timeout := make(chan interface{})
 	cancel := make(chan interface{})
-	ctx := Context{timeout, false, sync.Mutex{}, nil}
+	ctx := Context{timeout, false, nil, sync.Once{}}
 
 	cancelFunc := func() {
-		ctx.mu.Lock()
-		if !ctx.closed {
+		ctx.once.Do(func() {
 			ctx.closed = true
 			ctx.err = errContextWasCancelled
 			close(timeout)
 			close(cancel)
-		}
-		ctx.mu.Unlock()
+		})
 	}
 
 	go func() {
 		defer func() {
-			ctx.mu.Lock()
-			if !ctx.closed {
+			ctx.once.Do(func() {
 				ctx.closed = true
 				ctx.err = errContextTimeoutExceeded
 				close(timeout)
 				close(cancel)
-			}
-			ctx.mu.Unlock()
+			})
 		}()
 
 		select {
