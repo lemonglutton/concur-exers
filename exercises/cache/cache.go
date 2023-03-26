@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 )
@@ -59,9 +60,11 @@ func (c *InMemoryCache) Update(car Car) error {
 		return errors.New("car entity is incomplete")
 	}
 	c.mu.Lock()
-	// log.Printf("Adding/modifying with: %v\n", car)
+	defer c.mu.Unlock()
+
+	log.Printf("Adding/modifying with: %v\n", car)
 	if _, exists := c.data[car.Id()]; c.maxCapacity <= len(c.data) && !exists {
-		// log.Printf("Starting cleanup...\n")
+		log.Printf("Starting cleanup...\n")
 		c.evict()
 	}
 	c.data[car.Id()] = CachedCar{
@@ -69,29 +72,28 @@ func (c *InMemoryCache) Update(car Car) error {
 		createdAt: now.UnixMicro(),
 		lastUsed:  now.UnixMicro(),
 	}
-	c.mu.Unlock()
 
 	return nil
 }
 
 func (c *InMemoryCache) Read(id int) (Car, error) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	e, exists := c.data[id]
 	if !exists {
-		c.mu.Unlock()
 		return Car{}, errors.New("object not in cache")
 	}
+
 	e.lastUsed = time.Now().UnixMicro()
 	e.freq += 1
-	c.mu.Unlock()
-
 	return e.data, nil
 }
 
 func (c *InMemoryCache) Purge() {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.data = make(map[int]CachedCar)
-	c.mu.Unlock()
 }
 
 func (c *InMemoryCache) warm(ents []Car) {
@@ -108,10 +110,12 @@ func (c *InMemoryCache) warm(ents []Car) {
 
 func (c *InMemoryCache) Print() {
 	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	for _, val := range c.data {
 		fmt.Printf("%v", val.Sprintf())
 	}
-	c.mu.RUnlock()
+
 }
 
 func (c *InMemoryCache) delete(id int) {
