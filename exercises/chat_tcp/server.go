@@ -3,18 +3,14 @@ package main
 import (
 	"log"
 	"net"
-	"strings"
 	"sync"
 )
 
-const welcomeMsg = "Welcome to the simple TCP/IP chat. This is a list of commands You can use.\n" +
-	"First of all to start using this chat You need to provide us with Your username.\n" + "Username must consist at least with 8 chars\n" +
-	"Once Your username is set you start in you will join #general channel by default"
-
 type Server struct {
-	rooms    sync.Map
-	commands <-chan Command
-	stopChan chan struct{}
+	rooms       sync.Map
+	commands    chan Command
+	stopChan    chan struct{}
+	defaultRoom *Room
 }
 
 func (s *Server) Listen() {
@@ -22,13 +18,13 @@ func (s *Server) Listen() {
 	if err != nil {
 		return
 	}
-	<-s.run()
+	s.run()
 
 	log.Printf("TCP/IP server starts on port 9090")
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			log.Printf("Some erroc occured during accepting connection")
+			log.Printf("Some error occured during accepting connection")
 			continue
 		}
 
@@ -38,43 +34,35 @@ func (s *Server) Listen() {
 
 			if err != nil {
 				log.Printf("Connection has been interuppted: %v", err.Error())
+				c.close()
 			}
-			c.close()
 		}()
 	}
 }
 
-func NewServer(newRooms []Room) *Server {
+func NewServer(newRooms []*Room) *Server {
 	m := sync.Map{}
 	for _, room := range newRooms {
 		m.Store(room.name, room)
 	}
 
 	return &Server{
-		commands: make(<-chan Command),
-		rooms:    m,
+		commands:    make(chan Command),
+		rooms:       m,
+		defaultRoom: newRooms[0],
 	}
 }
 
-func (s *Server) run() <-chan struct{} {
-	goroutineIsReadyChan := make(chan struct{})
-
+func (s *Server) run() {
 	go func() {
-		close(goroutineIsReadyChan)
-
 		for {
 			select {
 			case <-s.stopChan:
 				return
 			case c := <-s.commands:
-				if c.cmd != cmdUsername && !c.client.usernameSet {
-					c.client.sendError("You haven't set Your username. Try again with /nick command.")
-				}
 				switch c.cmd {
-				case cmdRooms:
-					s.listRooms(c)
 				case cmdJoin:
-					s.joinRoom(c)
+					s.changeRoom(c)
 				case cmdMessage:
 					s.sendMessage(c)
 				case cmdQuit:
@@ -85,62 +73,54 @@ func (s *Server) run() <-chan struct{} {
 			}
 		}
 	}()
-
-	return goroutineIsReadyChan
 }
 
-func (s *Server) listRooms(cmd Command) {
-	var listOfRooms []string
-
-	s.rooms.Range(func(key, _ interface{}) bool {
-		room, _ := key.(Room)
-		listOfRooms = append(listOfRooms, room.name)
-
-		return true
-	})
-	cmd.client.sendMessage(strings.Join(listOfRooms, ","))
-}
-
-func (s *Server) joinRoom(cmd Command) {
+func (s *Server) changeRoom(cmd Command) {
 	foundRoom, ok := s.rooms.Load(cmd.input)
+
 	if !ok {
-		cmd.client.sendError("")
+		cmd.client.sendError("Room has not been found")
 		return
 	}
-
-	room, _ := foundRoom.(Room)
+	room := foundRoom.(*Room)
 	room.join(cmd.client)
-	cmd.client.sendMessage("You have joined a room!")
+
+	cmd.client.sendMessage("Hello %v! You have changed room to %v!\n", cmd.client.name, cmd.input)
 }
 
 func (s *Server) sendMessage(cmd Command) {
-
-	// err := c.room.broadcast()
+	c := cmd.client
+	c.room.broadcast(c, "%v: %v\n", cmd.client.name, cmd.input)
 }
 
-func (s *Server) quitChat(cmd Command) {}
+func (s *Server) quitChat(cmd Command) {
+
+}
 
 func (s *Server) nick(cmd Command) {
 	var err error
 	var exists *Client
 
-	s.rooms.Range(func(key, _ interface{}) bool {
-		room, _ := key.(Room)
+	s.rooms.Range(func(key, val interface{}) bool {
+		room := val.(*Room)
 		exists, err = room.findUser(cmd.input)
 
 		return exists == nil
 	})
 
 	if err != nil {
-		cmd.client.sendError("provided username already exists in system, try different one")
+		cmd.client.sendError("Provided username %v already exists in system. Please try different one\n", cmd.input)
 		return
 	}
+
+	oldUserName := cmd.client.name
 	cmd.client.setUsername(cmd.input)
+	cmd.client.room.broadcast(cmd.client, "User #%v has changed his username to #%v\n", oldUserName, cmd.input)
 }
 
 func (s *Server) newClient(conn net.Conn) *Client {
-	c := Client{name: "anonymous", connection: conn, stopChan: make(chan struct{}), room: nil}
-	c.sendMessage(welcomeMsg)
+	c := &Client{name: "anonymous", connection: conn, commands: s.commands, stopChan: make(chan struct{})}
+	s.defaultRoom.join(c)
 
-	return &c
+	return c
 }

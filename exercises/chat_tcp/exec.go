@@ -1,6 +1,8 @@
 package main
 
 func main() {
-	// s := NewServer()
-	// s.Listen()
+
+	rooms := []*Room{NewRoom("#general"), NewRoom("#random")}
+	s := NewServer(rooms)
+	s.Listen()
 }

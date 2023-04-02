@@ -8,8 +8,7 @@ import (
 type commandId int
 
 const (
-	cmdRooms commandId = iota
-	cmdUsername
+	cmdUsername commandId = iota
 	cmdJoin
 	cmdMessage
 	cmdQuit
@@ -24,20 +23,22 @@ type Command struct {
 func NewCommand(msg string, client *Client) (Command, error) {
 	parsedMsg := strings.Trim(msg, "\r\n")
 	args := strings.SplitN(parsedMsg, " ", 2)
-	unprocessedCmd := strings.TrimSpace(args[0])
+
+	if len(args) != 2 {
+		return Command{}, errors.New("malformed command")
+	}
+	unprocessedCmd := strings.ReplaceAll(args[0], " ", "")
 
 	var cmd commandId
 	switch unprocessedCmd {
-	case "/rooms":
+	case "/nick":
 		cmd = 0
-	case "/msg":
-		cmd = 2
 	case "/join":
 		cmd = 1
+	case "/msg":
+		cmd = 2
 	case "/quit":
 		cmd = 3
-	case "/nick":
-		cmd = 4
 	default:
 		return Command{}, errors.New("invalid command")
 	}

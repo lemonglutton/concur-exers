@@ -15,36 +15,33 @@ func NewRoom(name string) *Room {
 }
 
 func (r *Room) findUser(searchedUsername string) (*Client, error) {
-	foundClient, ok := r.members.Load(searchedUsername)
+	var foundClient *Client
 
-	if !ok {
-		return nil, nil
-	}
+	r.members.Range(func(key, value interface{}) bool {
+		foundClient = value.(*Client)
 
-	client, ok := foundClient.(Client)
-	if !ok {
-		return nil, fmt.Errorf("%v client has not been found", searchedUsername)
-	}
-
-	return &client, nil
+		return foundClient.name != searchedUsername
+	})
+	return foundClient, nil
 }
 
-func (r *Room) broadcast(sender *Client, msg string) error {
+func (r *Room) broadcast(sender *Client, messagef string, messageArgs ...interface{}) {
 	r.members.Range(func(key, val interface{}) bool {
-		username, _ := key.(string)
-		client, _ := val.(Client)
-
-		if username != sender.name {
-			client.sendMessage(msg)
-		}
+		c, _ := val.(*Client)
+		c.sendMessage(messagef, messageArgs...)
 
 		return true
 	})
-	return nil
 }
 
 func (r *Room) join(c *Client) {
-	r.members.Store(c.name, c)
+	r.members.Store(c.connection, c)
+	c.setRoom(r)
+	c.sendMessage(fmt.Sprintf("You have joined %v room!\n\n"+
+		"/join [xxx] - use this command change current room\n"+
+		"/msg [xxx] - use this command send a message to other members of room\n"+
+		"/quit [xxx] - use this command to quit chat\n"+
+		"/nick [xxx] - use this command to change your nick from anonymous\n\n", r.name))
 }
 
 func (r *Room) leave(c *Client) {
