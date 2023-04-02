@@ -14,7 +14,7 @@ func NewRoom(name string) *Room {
 	return &Room{name: name, members: sync.Map{}}
 }
 
-func (r *Room) findUser(searchedUsername string) (*Client, error) {
+func (r *Room) findUser(searchedUsername string) *Client {
 	var foundClient *Client
 
 	r.members.Range(func(key, value interface{}) bool {
@@ -22,10 +22,10 @@ func (r *Room) findUser(searchedUsername string) (*Client, error) {
 
 		return foundClient.name != searchedUsername
 	})
-	return foundClient, nil
+	return foundClient
 }
 
-func (r *Room) broadcast(sender *Client, messagef string, messageArgs ...interface{}) {
+func (r *Room) broadcast(messagef string, messageArgs ...interface{}) {
 	r.members.Range(func(key, val interface{}) bool {
 		c, _ := val.(*Client)
 		c.sendMessage(messagef, messageArgs...)
@@ -45,5 +45,5 @@ func (r *Room) join(c *Client) {
 }
 
 func (r *Room) leave(c *Client) {
-	r.members.Delete(c.name)
+	r.members.Delete(c.connection)
 }

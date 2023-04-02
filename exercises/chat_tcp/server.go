@@ -83,14 +83,16 @@ func (s *Server) changeRoom(cmd Command) {
 		return
 	}
 	room := foundRoom.(*Room)
-	room.join(cmd.client)
 
-	cmd.client.sendMessage("Hello %v! You have changed room to %v!\n", cmd.client.name, cmd.input)
+	oldRoom := cmd.client.room
+	oldRoom.leave(cmd.client)
+	room.join(cmd.client)
+	oldRoom.broadcast("User #%v has left this chat\n", cmd.client.name)
 }
 
 func (s *Server) sendMessage(cmd Command) {
 	c := cmd.client
-	c.room.broadcast(c, "%v: %v\n", cmd.client.name, cmd.input)
+	c.room.broadcast("%v: %v\n", cmd.client.name, cmd.input)
 }
 
 func (s *Server) quitChat(cmd Command) {
@@ -98,24 +100,23 @@ func (s *Server) quitChat(cmd Command) {
 }
 
 func (s *Server) nick(cmd Command) {
-	var err error
 	var exists *Client
 
 	s.rooms.Range(func(key, val interface{}) bool {
 		room := val.(*Room)
-		exists, err = room.findUser(cmd.input)
+		exists = room.findUser(cmd.input)
 
 		return exists == nil
 	})
 
-	if err != nil {
-		cmd.client.sendError("Provided username %v already exists in system. Please try different one\n", cmd.input)
-		return
-	}
+	// if exists != nil {
+	// 	cmd.client.sendError("Provided username #%v already exists in system. Please try different one\n", cmd.input)
+	// 	return
+	// }
 
 	oldUserName := cmd.client.name
 	cmd.client.setUsername(cmd.input)
-	cmd.client.room.broadcast(cmd.client, "User #%v has changed his username to #%v\n", oldUserName, cmd.input)
+	cmd.client.room.broadcast("User #%v has changed his username to #%v\n", oldUserName, cmd.input)
 }
 
 func (s *Server) newClient(conn net.Conn) *Client {
