@@ -3,28 +3,33 @@ package main
 import (
 	"log"
 	"net"
+	"strings"
 	"sync"
+)
+
+const (
+	host = "localhost"
+	port = "9090"
 )
 
 type Server struct {
 	rooms       sync.Map
 	commands    chan Command
-	stopChan    chan struct{}
 	defaultRoom *Room
 }
 
 func (s *Server) Listen() {
-	l, err := net.Listen("tcp", "localhost:9090")
+	l, err := net.Listen("tcp", host+":"+port)
 	if err != nil {
-		return
+		log.Fatalf("Error: %v\n", err)
 	}
 	s.run()
 
-	log.Printf("TCP/IP server starts on port 9090")
+	log.Printf("TCP/IP server starts on port %v", port)
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			log.Printf("Some error occured during accepting connection")
+			log.Printf("Error: Server could accept incoming connection %v\n", err)
 			continue
 		}
 
@@ -33,8 +38,8 @@ func (s *Server) Listen() {
 			err = c.readInput()
 
 			if err != nil {
-				log.Printf("Connection has been interuppted: %v", err.Error())
-				c.close()
+				log.Printf("Error:[#%v] Couldn't recieve message from user. Probably connection was interuppted %v\n", c.name, err)
+				s.quitChat(c)
 			}
 		}()
 	}
@@ -55,21 +60,18 @@ func NewServer(newRooms []*Room) *Server {
 
 func (s *Server) run() {
 	go func() {
-		for {
-			select {
-			case <-s.stopChan:
-				return
-			case c := <-s.commands:
-				switch c.cmd {
-				case cmdJoin:
-					s.changeRoom(c)
-				case cmdMessage:
-					s.sendMessage(c)
-				case cmdQuit:
-					s.quitChat(c)
-				case cmdUsername:
-					s.nick(c)
-				}
+		for c := range s.commands {
+			switch c.cmd {
+			case cmdJoin:
+				s.changeRoom(c)
+			case cmdMessage:
+				s.sendMessage(c)
+			case cmdQuit:
+				s.quitChat(c.client)
+			case cmdUsername:
+				s.nick(c)
+			case cmdRooms:
+				s.listRooms(c)
 			}
 		}
 	}()
@@ -79,7 +81,7 @@ func (s *Server) changeRoom(cmd Command) {
 	foundRoom, ok := s.rooms.Load(cmd.input)
 
 	if !ok {
-		cmd.client.sendError("Room has not been found")
+		cmd.client.sendMessage("Room has not been found. Please use /rooms command to check what rooms are available\n")
 		return
 	}
 	room := foundRoom.(*Room)
@@ -95,8 +97,23 @@ func (s *Server) sendMessage(cmd Command) {
 	c.room.broadcast("%v: %v\n", cmd.client.name, cmd.input)
 }
 
-func (s *Server) quitChat(cmd Command) {
+func (s *Server) quitChat(c *Client) {
+	defer c.close()
 
+	oldRoom := c.room
+	oldRoom.leave(c)
+	oldRoom.broadcast("User #%v has left chat\n", c.name)
+}
+
+func (s *Server) listRooms(cmd Command) {
+	var roomsNames []string
+
+	s.rooms.Range(func(key, val interface{}) bool {
+		room := val.(*Room)
+		roomsNames = append(roomsNames, room.name)
+		return true
+	})
+	cmd.client.sendMessage("This is a list of rooms: %v\n", strings.Join(roomsNames, ", "))
 }
 
 func (s *Server) nick(cmd Command) {
@@ -109,10 +126,10 @@ func (s *Server) nick(cmd Command) {
 		return exists == nil
 	})
 
-	// if exists != nil {
-	// 	cmd.client.sendError("Provided username #%v already exists in system. Please try different one\n", cmd.input)
-	// 	return
-	// }
+	if exists != nil {
+		cmd.client.sendMessage("Provided username #%v already exists in system. Please try different one\n", cmd.input)
+		return
+	}
 
 	oldUserName := cmd.client.name
 	cmd.client.setUsername(cmd.input)
@@ -120,7 +137,7 @@ func (s *Server) nick(cmd Command) {
 }
 
 func (s *Server) newClient(conn net.Conn) *Client {
-	c := &Client{name: "anonymous", connection: conn, commands: s.commands, stopChan: make(chan struct{})}
+	c := &Client{name: "anonymous", connection: conn, commands: s.commands}
 	s.defaultRoom.join(c)
 
 	return c

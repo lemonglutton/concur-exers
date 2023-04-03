@@ -11,7 +11,6 @@ type Client struct {
 	name       string
 	connection net.Conn
 	commands   chan<- Command
-	stopChan   <-chan struct{}
 	room       *Room
 }
 
@@ -28,36 +27,28 @@ func (c *Client) readInput() error {
 		userInput, err := bufio.NewReader(c.connection).ReadString('\n')
 
 		if err != nil {
-			log.Printf("Something went wrong during reading message: %v", err.Error())
 			return err
 		}
 		command, err := NewCommand(userInput, c)
 		if err != nil {
-			log.Printf("Invalid command: %v", err.Error())
-			c.sendError("Invalid command: %v\n", err.Error())
+			log.Printf("Error:[#%v] Invalid command: %v\n", c.name, err)
+
+			c.sendMessage("Your command was invalid please correct it." +
+				"/join [xxx] - use this command change current room\n" +
+				"/msg [xxx] - use this command send a message to other members of room\n" +
+				"/quit [xxx] - use this command to quit chat\n" +
+				"/nick [xxx] - use this command to change your nick from anonymous\n" +
+				"/rooms [xxx] - use this command to change your nick from anonymous\n\n")
 			continue
 		}
-
-		select {
-		case c.commands <- command:
-		case <-c.stopChan:
-			return nil
-
-		}
+		c.commands <- command
 	}
-}
-
-func (c *Client) sendError(messagef string, msgArgs ...interface{}) {
-	_, err := c.connection.Write([]byte(fmt.Sprintf(messagef, msgArgs...)))
-	if err != nil {
-		c.close()
-	}
-
 }
 
 func (c *Client) sendMessage(messagef string, msgArgs ...interface{}) {
 	_, err := c.connection.Write([]byte(fmt.Sprintf(messagef, msgArgs...)))
 	if err != nil {
+		log.Printf("Error:[#%v] Message has not been sent: %v\n", c.name, err)
 		c.close()
 	}
 }
