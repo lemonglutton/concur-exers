@@ -19,8 +19,6 @@ func (f *fifo) evict(c *InMemoryCache) {
 	sort.SliceStable(keys, func(i, j int) bool {
 		return c.data[keys[i]].createdAt < c.data[keys[j]].createdAt
 	})
-
-	// log.Printf("Removing: %v\n", c.data[keys[0]].Sprintf())
 	c.delete(keys[0])
 }
 

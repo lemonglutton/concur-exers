@@ -1,5 +1,9 @@
 package main
 
+type Entity interface {
+	Id() int
+}
+
 type Car struct {
 	vinNumber int
 	model     string

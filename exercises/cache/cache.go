@@ -9,34 +9,34 @@ import (
 )
 
 type Cacher interface {
-	Update(car Car) error
-	Read(id int) (Car, error)
+	Set(e Entity) error
+	Read(id int) (Entity, error)
 	Purge()
 	Print()
 }
 
-type CachedCar struct {
-	data      Car
+type CachedEntity struct {
+	data      Entity
 	createdAt int64
 	lastUsed  int64
 	freq      int64
 }
 
-func (ce CachedCar) Sprintf() string {
+func (ce CachedEntity) Sprintf() string {
 	return fmt.Sprintf("Data: %v, createdAt: %v, lastUsed: %v, freq:%d\n", ce.data, ce.createdAt, ce.createdAt, ce.freq)
 }
 
 // O(n)
 type InMemoryCache struct {
-	data         map[int]CachedCar
+	data         map[int]CachedEntity
 	evictionAlgo evictionAlgo
 	maxCapacity  int
 	mu           sync.RWMutex
 }
 
-func NewInMemoryCache(ev evictionAlgo, maxCap int, initVals []Car) Cacher {
+func NewInMemoryCache(ev evictionAlgo, maxCap int, initVals []Entity) Cacher {
 	cache := &InMemoryCache{
-		data:         make(map[int]CachedCar),
+		data:         make(map[int]CachedEntity),
 		evictionAlgo: ev,
 		maxCapacity:  maxCap,
 		mu:           sync.RWMutex{},
@@ -53,7 +53,7 @@ func NewInMemoryCache(ev evictionAlgo, maxCap int, initVals []Car) Cacher {
 	return cache
 }
 
-func (c *InMemoryCache) Update(car Car) error {
+func (c *InMemoryCache) Set(e Entity) error {
 	now := time.Now().UTC()
 
 	if c == nil {
@@ -62,13 +62,13 @@ func (c *InMemoryCache) Update(car Car) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	log.Printf("Adding/modifying with: %v\n", car)
-	if _, exists := c.data[car.Id()]; c.maxCapacity <= len(c.data) && !exists {
-		log.Printf("Starting cleanup...\n")
+	log.Printf("Adding/modifying with: %v\n", e)
+	if _, exists := c.data[e.Id()]; c.maxCapacity <= len(c.data) && !exists {
+		// log.Printf("Starting cleanup...\n")
 		c.evict()
 	}
-	c.data[car.Id()] = CachedCar{
-		data:      car,
+	c.data[e.Id()] = CachedEntity{
+		data:      e,
 		createdAt: now.UnixMicro(),
 		lastUsed:  now.UnixMicro(),
 	}
@@ -76,7 +76,7 @@ func (c *InMemoryCache) Update(car Car) error {
 	return nil
 }
 
-func (c *InMemoryCache) Read(id int) (Car, error) {
+func (c *InMemoryCache) Read(id int) (Entity, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -93,14 +93,14 @@ func (c *InMemoryCache) Read(id int) (Car, error) {
 func (c *InMemoryCache) Purge() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.data = make(map[int]CachedCar)
+	c.data = make(map[int]CachedEntity)
 }
 
-func (c *InMemoryCache) warm(ents []Car) {
+func (c *InMemoryCache) warm(ents []Entity) {
 	now := time.Now().UTC()
 
 	for _, ent := range ents {
-		c.data[ent.Id()] = CachedCar{
+		c.data[ent.Id()] = CachedEntity{
 			data:      ent,
 			createdAt: now.UnixMicro(),
 			lastUsed:  now.UnixMicro(),
