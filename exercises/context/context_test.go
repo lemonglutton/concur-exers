@@ -9,7 +9,6 @@ const cancelContextErrMsg = "Context was cancelled"
 const timeoutContextErrMsg = "Context timeout exceeded"
 const deadlineContextErrMsg = "Context didn't meet deadline"
 
-// // Some naive tests for the Context package implementation
 func TestWithCancel(t *testing.T) {
 
 	t.Run("Parent should close it's and child's channels when cancelation signal comes", func(t *testing.T) {

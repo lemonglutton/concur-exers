@@ -5,6 +5,11 @@ import (
 	"time"
 )
 
+// Sometimes the goroutines are dependent ona resource that we don't have very good control of.
+// Maybe goroutine recieves q request to pull data from a web service, or maybe it's monitoring an ephemeral file.
+// The point is that it can be very easy for a goroutine to become stuck in a bad state which it cannot recocer without external help.
+// Steward's job is to keep checking if hypothetical long-living process is in good condition and if not take apropiate actions
+
 type workerFn func(
 	done <-chan struct{},
 	pulseInterval time.Duration,
@@ -34,9 +39,6 @@ func RunStewardWardExample() {
 	}
 }
 
-// Sometimes the goroutines are dependent ona resource that we don't have very good control of. Maybe goroutine recieves q request to pull data
-// from a web service, or maybe it's monitoring an ephemeral file. The point is that it can be very easy for a goroutine to becomestuck in a bad state which it cannot recocer without external help.
-// Steward's job is to keep checking if hypothetical long-living process is in good condition
 func RunWithSteward(done <-chan struct{}, healthCheckRate time.Duration, timeout time.Duration, worker workerFn) <-chan struct{} {
 	stewardHeartbeat := make(chan struct{})
 	pulse := time.NewTicker(healthCheckRate)

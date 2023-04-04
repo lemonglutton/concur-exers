@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+// The "Done" pattern in Go is a concurrency pattern that allows you to signal the completion of a task or goroutine
+// This pattern is particularly useful when you need to coordinate multiple goroutines or tasks, and ensure that they all complete before the program exits.
+// By using the "Done" pattern, you can create more robust and reliable programs that are better able to handle complex concurrency scenarios.
+
 type Result struct {
 	resp *http.Response
 	err  error

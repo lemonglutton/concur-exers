@@ -10,7 +10,6 @@ type Contexter interface {
 	Done() <-chan struct{}
 }
 
-// This is a simplified version of context struct
 type Context struct {
 	finish chan interface{}
 	closed bool

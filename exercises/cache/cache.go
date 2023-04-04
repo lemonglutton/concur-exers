@@ -59,6 +59,7 @@ func (c *InMemoryCache) Set(e Entity) error {
 	if c == nil {
 		return errors.New("car entity is incomplete")
 	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

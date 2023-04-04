@@ -1,9 +1,7 @@
-This is simple implementation of cache in Golang, with few evicion policies. The main aim of this project was to work a bit with mutext on some more or less real life scenario, which has small/medium size and some cool functionality.
-To make reading a more pleasant experience, I tried to narrow the scope of this project as much as possible, so it doesn't take too much of the reader's time. This is why there is no sophisticated logging, error handling, more "business" rules, more tests and so on. This project might have some bug, since it was written purely for sake of learning concurrency.
+This is a simple implementation of a cache in Golang with a few eviction policies. The main objective of this project was to work with mutex in a somewhat realistic scenario with a cache of small/medium size and some useful functionality. To provide a better reading experience, I focused on limiting the scope of this project, so it doesn't consume too much of the reader's time. Therefore, there is no advanced logging, error handling, business rules, or extensive testing. Since this project was primarily developed for learning purposes, there might be some bugs.
 
-Maybe in the future:
-- More unit tests
-- More benchmark tests
-- Refactor benchmark for using Parallel
-- Add load testing
-- Implement more cache methods, to make this cache more similar to modern onces
+Future enhancements may include:
+- Additional unit and benchmark tests
+- Refactoring of benchmark tests to utilize Parallel
+- Load testing implementation
+- Development of more cache methods to make it more similar to modern ones.

@@ -1,5 +1,9 @@
 package main
 
+// This pattern can be useful when working with multiple channels of different types and uncertain quantity, and you want to create a simple interface that aggregates them for the consumer to use.
+// While this pattern is helpful, it is important to note that the order in which the channels are passed to the channel of channels matters.
+// The primary channel will block until the previously received channel is fully drained before proceeding to the next one.
+
 // assuming chanStream when closed will close our channel too, so we don't need to use orDone pattern
 func bridge(done <-chan interface{}, chanStream <-chan chan interface{}) <-chan interface{} {
 	valStream := make(chan interface{})

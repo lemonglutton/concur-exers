@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+// Heartbeat pattern is very interesting pattern which helps in monitoring the state of goroutine.
+// For example when having a goroutine which makes expensive computations, we can check if it is not deadlocked or livelocked.
+// Also often used in combination with steward_ward pattern to automatically take decisions about misbehaving goroutines
+
 const pulseFreq = 3 * time.Second
 const jobSchedulerFreq = 10 * time.Second
 
